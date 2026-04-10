@@ -1,0 +1,40 @@
+experiment:
+  output_root: outputs
+  name: polyp_pvt
+
+data:
+  root: data
+  image_size: 352
+  batch_size: 6
+  num_workers: 4
+  pin_memory: true
+
+train:
+  epochs: 30
+  lr: 0.0005
+  weight_decay: 0.0001
+  optimizer: adamw
+  scheduler: cosine
+  t_max: 30
+  eta_min: 1.0e-6
+  mixed_precision: true
+  grad_clip: null
+  seed: 42
+  loss: bce_dice
+  threshold: 0.5
+  aux_loss_weight: 1.0
+  save_metric: dice
+  save_metric_mode: max
+
+eval:
+  loss: bce_dice
+  threshold: 0.5
+  device: null
+
+model:
+  name: polyp_pvt
+  in_channels: 3
+  num_classes: 1
+  channels: [32, 64, 128, 256]
+  norm: bn
+  act: gelu

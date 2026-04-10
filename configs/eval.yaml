@@ -1,0 +1,4 @@
+eval:
+  loss: bce_dice
+  threshold: 0.5
+  device: null
