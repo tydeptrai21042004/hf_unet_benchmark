@@ -21,6 +21,8 @@ class Trainer:
         mixed_precision: bool = True,
         grad_clip: Optional[float] = None,
         aux_loss_weight: float = 1.0,
+        aux_warmup_epochs: int = 0,
+        aux_ramp_epochs: int = 0,
         log_interval: int = 20,
         threshold: float = 0.5,
         logger=None,
@@ -31,7 +33,9 @@ class Trainer:
         self.loss_fn = loss_fn
         self.scheduler = scheduler
         self.grad_clip = grad_clip
-        self.aux_loss_weight = aux_loss_weight
+        self.aux_loss_weight = float(aux_loss_weight)
+        self.aux_warmup_epochs = int(aux_warmup_epochs)
+        self.aux_ramp_epochs = int(aux_ramp_epochs)
         self.log_interval = log_interval
         self.threshold = threshold
         self.logger = logger
@@ -45,7 +49,17 @@ class Trainer:
         if self.logger is not None:
             self.logger.info(message)
 
-    def _compute_total_loss(self, logits: torch.Tensor, masks: torch.Tensor) -> tuple[torch.Tensor, Dict[str, float]]:
+    def _current_aux_weight(self, epoch: int) -> float:
+        if self.aux_loss_weight <= 0.0:
+            return 0.0
+        if epoch <= self.aux_warmup_epochs:
+            return 0.0
+        if self.aux_ramp_epochs <= 0:
+            return self.aux_loss_weight
+        progress = min(max(epoch - self.aux_warmup_epochs, 0) / max(self.aux_ramp_epochs, 1), 1.0)
+        return self.aux_loss_weight * progress
+
+    def _compute_total_loss(self, logits: torch.Tensor, masks: torch.Tensor, *, epoch: int) -> tuple[torch.Tensor, Dict[str, float]]:
         seg_loss = self.loss_fn(logits, masks)
         total_loss = seg_loss
         log_items = {"seg_loss": float(seg_loss.detach().item())}
@@ -54,17 +68,22 @@ class Trainer:
             aux_loss = self.model.auxiliary_regularization()
             if not torch.is_tensor(aux_loss):
                 aux_loss = torch.tensor(float(aux_loss), device=self.device)
-            total_loss = total_loss + self.aux_loss_weight * aux_loss
+            aux_weight = self._current_aux_weight(epoch)
+            total_loss = total_loss + aux_weight * aux_loss
             log_items["aux_loss"] = float(aux_loss.detach().item())
+            log_items["aux_weight"] = float(aux_weight)
 
         log_items["loss"] = float(total_loss.detach().item())
         return total_loss, log_items
 
     def train_one_epoch(self, dataloader: DataLoader, epoch: int) -> Dict[str, float]:
         self.model.train()
+        if hasattr(self.model, "set_epoch"):
+            self.model.set_epoch(epoch)
         loss_meter = AverageMeter()
         seg_meter = AverageMeter()
         aux_meter = AverageMeter()
+        aux_w_meter = AverageMeter()
 
         for step, batch in enumerate(dataloader, start=1):
             images = batch["image"].to(self.device, non_blocking=True)
@@ -73,7 +92,7 @@ class Trainer:
             self.optimizer.zero_grad(set_to_none=True)
             with torch.amp.autocast(device_type=self.device.type, enabled=self.mixed_precision):
                 logits = self.model(images)
-                total_loss, log_items = self._compute_total_loss(logits, masks)
+                total_loss, log_items = self._compute_total_loss(logits, masks, epoch=epoch)
 
             self.scaler.scale(total_loss).backward()
             self.scaler.unscale_(self.optimizer)
@@ -85,12 +104,14 @@ class Trainer:
             loss_meter.update(log_items["loss"], n=images.size(0))
             seg_meter.update(log_items["seg_loss"], n=images.size(0))
             aux_meter.update(log_items.get("aux_loss", 0.0), n=images.size(0))
+            aux_w_meter.update(log_items.get("aux_weight", 0.0), n=images.size(0))
 
             if step % self.log_interval == 0:
                 lr = self.optimizer.param_groups[0]["lr"]
                 self._log(
                     f"epoch={epoch} step={step}/{len(dataloader)} "
-                    f"loss={loss_meter.avg:.4f} seg={seg_meter.avg:.4f} aux={aux_meter.avg:.4f} lr={lr:.2e}"
+                    f"loss={loss_meter.avg:.4f} seg={seg_meter.avg:.4f} aux={aux_meter.avg:.4f} "
+                    f"aux_w={aux_w_meter.avg:.4f} lr={lr:.2e}"
                 )
 
         if self.scheduler is not None:
@@ -104,6 +125,7 @@ class Trainer:
             "loss": loss_meter.avg,
             "seg_loss": seg_meter.avg,
             "aux_loss": aux_meter.avg,
+            "aux_weight": aux_w_meter.avg,
             "lr": float(self.optimizer.param_groups[0]["lr"]),
         }
 

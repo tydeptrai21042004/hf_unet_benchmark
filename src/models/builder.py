@@ -22,7 +22,9 @@ ALIASES = {
 
 def build_model(name: str, config: Optional[Mapping[str, Any]] = None, **overrides: Any):
     cfg = _to_dict(config)
+    cfg.pop("name", None)
     cfg.update(overrides)
+    cfg.pop("name", None)
     model_name = ALIASES.get(name.lower(), name.lower())
     return create_model(model_name, **cfg)
 

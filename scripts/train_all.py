@@ -10,6 +10,7 @@ from pathlib import Path
 
 DEFAULT_MODELS = [
     "unet",
+    "unet_cbam",
     "unetpp",
     "pranet",
     "acsnet",

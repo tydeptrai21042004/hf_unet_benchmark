@@ -104,7 +104,10 @@ def build_dataloaders(cfg: Dict[str, Any]) -> tuple[DataLoader, DataLoader]:
     train_ds = KvasirSegDataset(
         root=data_cfg.get("root", "data"),
         split="train",
-        transform=build_train_transforms(image_size=image_size),
+        transform=build_train_transforms(
+            image_size=image_size,
+            preset=str(data_cfg.get("augmentation", "baseline")),
+        ),
     )
     val_ds = KvasirSegDataset(
         root=data_cfg.get("root", "data"),
@@ -231,6 +234,8 @@ def main() -> None:
         mixed_precision=bool(cfg["train"].get("mixed_precision", True)),
         grad_clip=cfg["train"].get("grad_clip"),
         aux_loss_weight=float(cfg["train"].get("aux_loss_weight", 1.0)),
+        aux_warmup_epochs=int(cfg["train"].get("aux_warmup_epochs", 0)),
+        aux_ramp_epochs=int(cfg["train"].get("aux_ramp_epochs", 0)),
         threshold=float(cfg["train"].get("threshold", 0.5)),
         logger=logger,
     )

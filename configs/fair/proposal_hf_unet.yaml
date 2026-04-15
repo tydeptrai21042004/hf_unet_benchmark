@@ -1,5 +1,5 @@
 experiment:
-  output_root: outputs
+  output_root: outputs_fair
   name: proposal_hf_unet
 data:
   root: data
@@ -7,25 +7,25 @@ data:
   batch_size: 6
   num_workers: 4
   pin_memory: true
-  augmentation: baseline
+  augmentation: strong
 train:
-  epochs: 30
-  lr: 0.001
+  epochs: 120
+  lr: 0.0003
   weight_decay: 0.0001
   optimizer: adamw
   scheduler: cosine
-  t_max: 30
+  t_max: 120
   eta_min: 1.0e-06
   mixed_precision: true
-  grad_clip: null
+  grad_clip: 1.0
   seed: 42
   loss: bce_dice
   threshold: 0.5
   aux_loss_weight: 0.1
-  save_metric: dice
-  save_metric_mode: max
   aux_warmup_epochs: 10
   aux_ramp_epochs: 20
+  save_metric: dice
+  save_metric_mode: max
 eval:
   loss: bce_dice
   threshold: 0.5
@@ -41,13 +41,13 @@ model:
   - 256
   - 512
   hf_alpha: 0.5
+  hf_alpha_start: 0.0
+  hf_alpha_warmup_epochs: 10
   hf_expansion: 1.5
-  hf_dropout: 0.0
+  hf_dropout: 0.1
   use_hf_regularizer: true
   norm: bn
   act: relu
-  hf_alpha_start: 0.0
-  hf_alpha_warmup_epochs: 10
   hf_block_norm: gn
   hf_block_act: gelu
   mixer_act: identity

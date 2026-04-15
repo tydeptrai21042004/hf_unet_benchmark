@@ -14,7 +14,7 @@ from typing import Callable, List, MutableMapping, Sequence
 
 import numpy as np
 import torch
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageFilter
 
 Sample = MutableMapping[str, object]
 
@@ -86,6 +86,20 @@ class SegRandomRotate90:
 
 
 @dataclass
+class SegRandomRotate:
+    degrees: float = 15.0
+    p: float = 0.5
+
+    def __call__(self, sample: Sample) -> Sample:
+        if random.random() >= self.p:
+            return sample
+        angle = random.uniform(-self.degrees, self.degrees)
+        sample["image"] = sample["image"].rotate(angle, resample=Image.BILINEAR)
+        sample["mask"] = sample["mask"].rotate(angle, resample=Image.NEAREST)
+        return sample
+
+
+@dataclass
 class SegRandomBrightnessContrast:
     brightness: float = 0.15
     contrast: float = 0.15
@@ -104,6 +118,18 @@ class SegRandomBrightnessContrast:
             image = ImageEnhance.Contrast(image).enhance(factor)
 
         sample["image"] = image
+        return sample
+
+
+@dataclass
+class SegRandomGaussianBlur:
+    radius: float = 1.5
+    p: float = 0.2
+
+    def __call__(self, sample: Sample) -> Sample:
+        if random.random() < self.p:
+            radius = random.uniform(0.0, self.radius)
+            sample["image"] = sample["image"].filter(ImageFilter.GaussianBlur(radius=radius))
         return sample
 
 
@@ -168,15 +194,29 @@ def build_train_transforms(
     normalize: bool = True,
     mean: Sequence[float] = (0.485, 0.456, 0.406),
     std: Sequence[float] = (0.229, 0.224, 0.225),
+    preset: str = "baseline",
 ) -> SegCompose:
-    transforms: List[Callable[[Sample], Sample]] = [
-        SegResize(image_size),
-        SegRandomHorizontalFlip(0.5),
-        SegRandomVerticalFlip(0.2),
-        SegRandomRotate90(0.3),
-        SegRandomBrightnessContrast(brightness=0.15, contrast=0.15, p=0.5),
-        SegToTensor(),
-    ]
+    preset_key = preset.lower()
+    if preset_key == "strong":
+        transforms: List[Callable[[Sample], Sample]] = [
+            SegResize(image_size),
+            SegRandomHorizontalFlip(0.5),
+            SegRandomVerticalFlip(0.2),
+            SegRandomRotate90(0.4),
+            SegRandomRotate(degrees=15.0, p=0.35),
+            SegRandomBrightnessContrast(brightness=0.2, contrast=0.2, p=0.6),
+            SegRandomGaussianBlur(radius=1.5, p=0.2),
+            SegToTensor(),
+        ]
+    else:
+        transforms = [
+            SegResize(image_size),
+            SegRandomHorizontalFlip(0.5),
+            SegRandomVerticalFlip(0.2),
+            SegRandomRotate90(0.3),
+            SegRandomBrightnessContrast(brightness=0.15, contrast=0.15, p=0.5),
+            SegToTensor(),
+        ]
     if normalize:
         transforms.append(SegNormalize(mean=mean, std=std))
     return SegCompose(transforms)
