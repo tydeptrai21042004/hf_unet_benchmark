@@ -26,6 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate all or selected models.")
     parser.add_argument("--models", type=str, default=",".join(DEFAULT_MODELS), help="Comma-separated model names")
+    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Currently supports kvasir_seg and custom.")
     parser.add_argument("--config-dir", type=str, default="configs")
     parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
     parser.add_argument("--data-root", type=str, default=None)
@@ -45,7 +46,7 @@ def main() -> None:
     config_dir = PROJECT_ROOT / args.config_dir
     models = [m.strip() for m in args.models.split(",") if m.strip()]
     for model in models:
-        cmd = [sys.executable, str(script), "--model", model, "--split", args.split]
+        cmd = [sys.executable, str(script), "--model", model, "--dataset", args.dataset, "--split", args.split]
         cfg = config_dir / f"{model}.yaml"
         if cfg.exists():
             cmd += ["--config", str(cfg)]

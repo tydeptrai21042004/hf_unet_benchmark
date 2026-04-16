@@ -9,21 +9,30 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.datasets import get_dataset_spec, normalize_dataset_name
+from src.utils import resolve_device
+
+DEFAULT_MODELS = "unet,unet_cbam,unetpp,pranet,acsnet,hardnet_mseg,polyp_pvt,caranet,proposal_hf_unet"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run data prep, split generation, training, evaluation, and export.")
-    parser.add_argument("--models", type=str, default=None, help="Comma-separated model names for train_all/eval_all")
+    parser.add_argument("--models", type=str, default=DEFAULT_MODELS, help="Comma-separated model names for train_all/eval_all")
+    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Auto-download is available for kvasir_seg.")
     parser.add_argument("--config-dir", type=str, default="configs")
     parser.add_argument("--data-root", type=str, default="data")
     parser.add_argument("--source-dir", type=str, default=None)
     parser.add_argument("--zip-path", type=str, default=None)
     parser.add_argument("--download-url", type=str, default=None)
+    parser.add_argument("--download-dst", type=str, default=None)
     parser.add_argument("--image-size", type=int, default=352)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
-    parser.add_argument("--device", type=str, default=None)
+    parser.add_argument("--device", type=str, default="auto")
     parser.add_argument("--output-root", type=str, default=None)
     parser.add_argument("--num-workers", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
@@ -39,35 +48,107 @@ def run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
 
+def prepared_dataset_exists(data_root: Path, image_size: int) -> bool:
+    return (data_root / "processed" / f"images_{image_size}").is_dir() and (data_root / "processed" / f"masks_{image_size}").is_dir()
+
+
+def split_files_exist(data_root: Path) -> bool:
+    splits_root = data_root / "splits"
+    return all((splits_root / f"{name}.txt").is_file() for name in ("train", "val", "test"))
+
+
+def build_prepare_cmd(args: argparse.Namespace, py: str) -> list[str]:
+    dataset_name = normalize_dataset_name(args.dataset)
+    spec = get_dataset_spec(dataset_name)
+    cmd = [
+        py,
+        str(PROJECT_ROOT / "scripts" / "prepare_kvasir_seg.py"),
+        "--dataset",
+        dataset_name,
+        "--data-root",
+        args.data_root,
+        "--image-size",
+        str(args.image_size),
+    ]
+    if args.source_dir:
+        cmd += ["--source-dir", args.source_dir]
+    if args.zip_path:
+        cmd += ["--zip-path", args.zip_path]
+    if args.download_url:
+        cmd += ["--download-url", args.download_url]
+    elif spec.default_download_url and not args.source_dir and not args.zip_path:
+        cmd += ["--download-url", spec.default_download_url]
+    if args.download_dst:
+        cmd += ["--download-dst", args.download_dst]
+    return cmd
+
+
 def main() -> None:
     args = parse_args()
     py = sys.executable
+    device = resolve_device(args.device)
+    dataset_name = normalize_dataset_name(args.dataset)
+    data_root = Path(args.data_root)
 
-    if not args.skip_prepare:
-        cmd = [py, str(PROJECT_ROOT / "scripts" / "prepare_kvasir_seg.py"), "--data-root", args.data_root, "--image-size", str(args.image_size)]
-        if args.source_dir:
-            cmd += ["--source-dir", args.source_dir]
-        if args.zip_path:
-            cmd += ["--zip-path", args.zip_path]
-        if args.download_url:
-            cmd += ["--download-url", args.download_url]
-        run(cmd)
+    must_prepare = prepared_dataset_exists(data_root, args.image_size) is False
+    if must_prepare or not args.skip_prepare:
+        run(build_prepare_cmd(args, py))
 
-    if not args.skip_splits:
-        run([py, str(PROJECT_ROOT / "scripts" / "make_splits.py"), "--data-root", args.data_root, "--seed", str(args.seed)])
+    must_split = split_files_exist(data_root) is False
+    if must_split or not args.skip_splits:
+        run([
+            py,
+            str(PROJECT_ROOT / "scripts" / "make_splits.py"),
+            "--dataset",
+            dataset_name,
+            "--data-root",
+            args.data_root,
+            "--image-size",
+            str(args.image_size),
+            "--seed",
+            str(args.seed),
+        ])
 
-    train_cmd = [py, str(PROJECT_ROOT / "scripts" / "train_all.py"), "--config-dir", args.config_dir, "--data-root", args.data_root, "--image-size", str(args.image_size), "--seed", str(args.seed)]
-    if args.models:
-        train_cmd += ["--models", args.models]
-    for flag in [("--batch-size", args.batch_size), ("--epochs", args.epochs), ("--lr", args.lr), ("--device", args.device), ("--output-root", args.output_root), ("--num-workers", args.num_workers)]:
+    train_cmd = [
+        py,
+        str(PROJECT_ROOT / "scripts" / "train_all.py"),
+        "--models",
+        args.models,
+        "--dataset",
+        dataset_name,
+        "--config-dir",
+        args.config_dir,
+        "--data-root",
+        args.data_root,
+        "--image-size",
+        str(args.image_size),
+        "--seed",
+        str(args.seed),
+        "--device",
+        device,
+    ]
+    for flag in [("--batch-size", args.batch_size), ("--epochs", args.epochs), ("--lr", args.lr), ("--output-root", args.output_root), ("--num-workers", args.num_workers)]:
         if flag[1] is not None:
             train_cmd += [flag[0], str(flag[1])]
     run(train_cmd)
 
-    eval_cmd = [py, str(PROJECT_ROOT / "scripts" / "eval_all.py"), "--config-dir", args.config_dir, "--data-root", args.data_root, "--image-size", str(args.image_size)]
-    if args.models:
-        eval_cmd += ["--models", args.models]
-    for flag in [("--batch-size", args.batch_size), ("--device", args.device), ("--output-root", args.output_root), ("--num-workers", args.num_workers)]:
+    eval_cmd = [
+        py,
+        str(PROJECT_ROOT / "scripts" / "eval_all.py"),
+        "--models",
+        args.models,
+        "--dataset",
+        dataset_name,
+        "--config-dir",
+        args.config_dir,
+        "--data-root",
+        args.data_root,
+        "--image-size",
+        str(args.image_size),
+        "--device",
+        device,
+    ]
+    for flag in [("--batch-size", args.batch_size), ("--output-root", args.output_root), ("--num-workers", args.num_workers)]:
         if flag[1] is not None:
             eval_cmd += [flag[0], str(flag[1])]
     if args.save_predictions:

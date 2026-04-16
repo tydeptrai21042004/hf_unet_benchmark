@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Prepare Kvasir-SEG for the HF-U-Net benchmark.
 
-Supports three input modes:
+Supports these input modes:
 1) Existing extracted dataset folder with images/ and masks/
 2) Zip archive containing Kvasir-SEG
 3) Optional direct download URL
+4) Automatic default download when no local source is found
 
 Outputs a benchmark-friendly layout:
     data/
@@ -23,9 +24,15 @@ import shutil
 import sys
 import zipfile
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from PIL import Image
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.datasets import get_dataset_spec, normalize_dataset_name
 
 VALID_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
@@ -137,8 +144,13 @@ def _maybe_download(url: str, dst: Path) -> Path:
     return dst
 
 
+def prepared_dataset_exists(data_root: Path, image_size: int) -> bool:
+    return (data_root / "processed" / f"images_{image_size}").is_dir() and (data_root / "processed" / f"masks_{image_size}").is_dir()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prepare Kvasir-SEG for benchmark training.")
+    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Auto-download is available for kvasir_seg.")
     parser.add_argument("--data-root", type=str, default="data", help="Benchmark data root.")
     parser.add_argument("--source-dir", type=str, default=None, help="Path to extracted Kvasir-SEG folder or its parent.")
     parser.add_argument("--zip-path", type=str, default=None, help="Path to a Kvasir-SEG zip archive.")
@@ -146,16 +158,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--download-dst", type=str, default=None, help="Optional destination path for downloaded zip.")
     parser.add_argument("--image-size", type=int, default=352, help="Output square size for processed images/masks.")
     parser.add_argument("--skip-raw-copy", action="store_true", help="Do not copy files into data/raw/Kvasir-SEG.")
+    parser.add_argument("--force", action="store_true", help="Rebuild processed outputs even if they already exist.")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    dataset_name = normalize_dataset_name(args.dataset)
+    if dataset_name == "custom":
+        raise ValueError("Custom datasets are not auto-preparable. Use your own images/masks layout and split files.")
+
     data_root = Path(args.data_root)
     raw_root = data_root / "raw" / "Kvasir-SEG"
     processed_root = data_root / "processed"
     processed_images = processed_root / f"images_{args.image_size}"
     processed_masks = processed_root / f"masks_{args.image_size}"
+
+    if prepared_dataset_exists(data_root, args.image_size) and not args.force:
+        print(f"Dataset already prepared for image_size={args.image_size} at: {processed_root}")
+        print(f"Processed images: {processed_images}")
+        print(f"Processed masks : {processed_masks}")
+        return
 
     dataset_root: Optional[Path] = None
 
@@ -165,14 +188,21 @@ def main() -> None:
             raise FileNotFoundError(f"Could not locate images/ and masks/ under source-dir: {args.source_dir}")
     elif args.zip_path:
         dataset_root = _extract_zip(Path(args.zip_path), data_root / "_tmp_extract")
-    elif args.download_url:
-        download_dst = Path(args.download_dst) if args.download_dst else data_root / "downloads" / "kvasir_seg.zip"
-        zip_path = _maybe_download(args.download_url, download_dst)
-        dataset_root = _extract_zip(zip_path, data_root / "_tmp_extract")
     else:
-        # Fallback: maybe raw dataset already exists.
-        dataset_root = _find_dataset_root(data_root)
-        if dataset_root is None:
+        if args.download_url:
+            download_url = args.download_url
+        else:
+            download_url = get_dataset_spec(dataset_name).default_download_url
+
+        existing_root = _find_dataset_root(data_root)
+        if existing_root is not None:
+            dataset_root = existing_root
+        elif download_url:
+            download_dst = Path(args.download_dst) if args.download_dst else data_root / "downloads" / f"{dataset_name}.zip"
+            print(f"Downloading {dataset_name} from: {download_url}")
+            zip_path = _maybe_download(download_url, download_dst)
+            dataset_root = _extract_zip(zip_path, data_root / "_tmp_extract")
+        else:
             raise ValueError(
                 "Provide one of --source-dir, --zip-path, or --download-url. "
                 "Alternatively, place extracted data under data/raw/Kvasir-SEG/images and masks."
@@ -203,7 +233,7 @@ def main() -> None:
         )
 
     _write_metadata(metadata_rows, processed_root / "metadata.csv")
-    print(f"Prepared {len(metadata_rows)} samples at: {processed_root}")
+    print(f"Prepared {len(metadata_rows)} samples for dataset={dataset_name} at: {processed_root}")
     print(f"Processed images: {processed_images}")
     print(f"Processed masks : {processed_masks}")
 

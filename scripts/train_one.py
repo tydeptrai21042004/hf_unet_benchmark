@@ -9,7 +9,7 @@ import json
 import math
 import sys
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Mapping
 
 import torch
 from torch.utils.data import DataLoader
@@ -18,16 +18,25 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.datasets import build_eval_transforms, build_train_transforms, KvasirSegDataset
+from src.datasets import build_eval_transforms, build_train_transforms, KvasirSegDataset, normalize_dataset_name
 from src.engine import Trainer
 from src.losses import BCEDiceLoss, DiceLoss, StructureLoss
 from src.models import build_model
-from src.utils import ExperimentPaths, get_logger, load_yaml, seed_everything, dump_yaml
+from src.utils import (
+    ExperimentPaths,
+    dump_yaml,
+    get_logger,
+    load_yaml,
+    resolve_device,
+    seed_everything,
+    should_pin_memory,
+)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train one model.")
     parser.add_argument("--model", type=str, required=True, help="Registered model name, e.g. unet or proposal_hf_unet")
+    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Currently supports kvasir_seg and custom.")
     parser.add_argument("--config", type=str, default=None, help="Path to YAML config")
     parser.add_argument("--data-root", type=str, default=None)
     parser.add_argument("--image-size", type=int, default=None)
@@ -54,7 +63,7 @@ def _deep_update(base: Dict[str, Any], updates: Mapping[str, Any]) -> Dict[str, 
 def load_config_from_args(args: argparse.Namespace) -> Dict[str, Any]:
     cfg: Dict[str, Any] = {
         "experiment": {"output_root": str(PROJECT_ROOT), "name": None},
-        "data": {"root": "data", "image_size": 352, "batch_size": 8, "num_workers": 4, "pin_memory": True},
+        "data": {"dataset": normalize_dataset_name(args.dataset), "root": "data", "image_size": 352, "batch_size": 8, "num_workers": 4, "pin_memory": True},
         "train": {
             "epochs": 30,
             "lr": 1e-3,
@@ -75,6 +84,7 @@ def load_config_from_args(args: argparse.Namespace) -> Dict[str, Any]:
     if args.config:
         _deep_update(cfg, load_yaml(args.config))
     overrides: Dict[str, Any] = {}
+    overrides.setdefault("data", {})["dataset"] = normalize_dataset_name(args.dataset)
     if args.data_root is not None:
         overrides.setdefault("data", {})["root"] = args.data_root
     if args.image_size is not None:
@@ -95,15 +105,21 @@ def load_config_from_args(args: argparse.Namespace) -> Dict[str, Any]:
         overrides.setdefault("train", {})["seed"] = args.seed
     _deep_update(cfg, overrides)
     cfg["model"]["name"] = args.model
+    cfg["data"]["dataset"] = normalize_dataset_name(cfg["data"].get("dataset", args.dataset))
     return cfg
 
 
 def build_dataloaders(cfg: Dict[str, Any]) -> tuple[DataLoader, DataLoader]:
     data_cfg = cfg["data"]
     image_size = int(data_cfg.get("image_size", 352))
+    dataset_name = normalize_dataset_name(data_cfg.get("dataset", "kvasir_seg"))
+    if dataset_name not in {"kvasir_seg", "custom"}:
+        raise ValueError(f"Unsupported dataset for training: {dataset_name}")
+
     train_ds = KvasirSegDataset(
         root=data_cfg.get("root", "data"),
         split="train",
+        image_size=image_size,
         transform=build_train_transforms(
             image_size=image_size,
             preset=str(data_cfg.get("augmentation", "baseline")),
@@ -112,11 +128,12 @@ def build_dataloaders(cfg: Dict[str, Any]) -> tuple[DataLoader, DataLoader]:
     val_ds = KvasirSegDataset(
         root=data_cfg.get("root", "data"),
         split="val",
+        image_size=image_size,
         transform=build_eval_transforms(image_size=image_size),
     )
     batch_size = int(data_cfg.get("batch_size", 8))
     num_workers = int(data_cfg.get("num_workers", 4))
-    pin_memory = bool(data_cfg.get("pin_memory", True))
+    pin_memory = bool(data_cfg.get("pin_memory", should_pin_memory(cfg["train"].get("device"))))
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
@@ -184,7 +201,7 @@ def unwrap_state_dict(checkpoint: Dict[str, Any]) -> Dict[str, torch.Tensor]:
         return checkpoint["state_dict"]
     if "model" in checkpoint and isinstance(checkpoint["model"], dict):
         return checkpoint["model"]
-    return checkpoint  # already a state_dict
+    return checkpoint
 
 
 def save_json(data: Dict[str, Any], path: Path) -> None:
@@ -214,7 +231,11 @@ def main() -> None:
     output_root = Path(cfg["experiment"].get("output_root", PROJECT_ROOT))
     exp_paths = ExperimentPaths.create(output_root, experiment_name=exp_name)
     logger = get_logger(name=f"train_{model_name}", log_file=exp_paths.logs / "train.log")
+    resolved_device = resolve_device(cfg["train"].get("device"))
+    cfg["train"]["device"] = resolved_device
+    cfg["data"]["pin_memory"] = bool(cfg["data"].get("pin_memory", should_pin_memory(resolved_device)))
     logger.info(f"Training model: {model_name}")
+    logger.info(f"Dataset: {cfg['data'].get('dataset')} | Device: {resolved_device}")
     dump_yaml(cfg, exp_paths.root / "resolved_train_config.yaml")
 
     train_loader, val_loader = build_dataloaders(cfg)
@@ -223,13 +244,12 @@ def main() -> None:
     optimizer = build_optimizer(model, cfg)
     scheduler = build_scheduler(optimizer, cfg)
     loss_fn = build_loss(str(cfg["train"].get("loss", "bce_dice")))
-    device = cfg["train"].get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
 
     trainer = Trainer(
         model=model,
         optimizer=optimizer,
         loss_fn=loss_fn,
-        device=device,
+        device=resolved_device,
         scheduler=scheduler,
         mixed_precision=bool(cfg["train"].get("mixed_precision", True)),
         grad_clip=cfg["train"].get("grad_clip"),
@@ -241,64 +261,59 @@ def main() -> None:
     )
 
     if args.resume:
-        ckpt = torch.load(args.resume, map_location="cpu")
-        model.load_state_dict(unwrap_state_dict(ckpt), strict=True)
-        if "optimizer" in ckpt:
-            optimizer.load_state_dict(ckpt["optimizer"])
+        checkpoint = torch.load(args.resume, map_location="cpu")
+        model.load_state_dict(unwrap_state_dict(checkpoint), strict=True)
         logger.info(f"Resumed from checkpoint: {args.resume}")
 
-    epochs = int(cfg["train"].get("epochs", 30))
-    save_metric = str(cfg["train"].get("save_metric", "dice"))
-    save_mode = str(cfg["train"].get("save_metric_mode", "max")).lower()
-    best_score = -math.inf if save_mode == "max" else math.inf
-    history: list[Dict[str, Any]] = []
+    history = trainer.fit(
+        train_loader=train_loader,
+        val_loader=val_loader,
+        epochs=int(cfg["train"].get("epochs", 30)),
+        metric_for_plateau=str(cfg["train"].get("plateau_metric", "loss")),
+    )
 
-    for epoch in range(1, epochs + 1):
-        train_metrics = trainer.train_one_epoch(train_loader, epoch)
-        val_metrics = trainer.validate(val_loader)
-        record = {"epoch": epoch}
-        record.update({f"train/{k}": v for k, v in train_metrics.items()})
-        record.update({f"val/{k}": v for k, v in val_metrics.items()})
-        history.append(record)
+    if not history:
+        raise RuntimeError("Training produced an empty history.")
 
-        score = float(val_metrics.get(save_metric, val_metrics.get("loss", 0.0)))
-        improved = score > best_score if save_mode == "max" else score < best_score
-        if improved:
-            best_score = score
-            best_path = exp_paths.checkpoints / "best.pt"
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "state_dict": trainer.model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "config": cfg,
-                    "best_metric_name": save_metric,
-                    "best_metric_value": best_score,
-                    "val_metrics": val_metrics,
-                },
-                best_path,
-            )
-            logger.info(f"Saved best checkpoint to {best_path} with {save_metric}={best_score:.6f}")
+    save_history_csv(history, exp_paths.results / "history.csv")
+    best_metric_name = str(cfg["train"].get("save_metric", "dice"))
+    best_metric_mode = str(cfg["train"].get("save_metric_mode", "max")).lower()
 
-        last_path = exp_paths.checkpoints / "last.pt"
-        torch.save(
-            {
-                "epoch": epoch,
-                "state_dict": trainer.model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "config": cfg,
-                "val_metrics": val_metrics,
-            },
-            last_path,
-        )
-        logger.info(
-            f"epoch={epoch}/{epochs} train_loss={train_metrics['loss']:.4f} "
-            f"val_loss={val_metrics.get('loss', 0.0):.4f} val_dice={val_metrics.get('dice', 0.0):.4f}"
-        )
+    def metric_value(record: Dict[str, Any]) -> float:
+        key = f"val/{best_metric_name}"
+        if key in record:
+            return float(record[key])
+        fallback = record.get("val/loss", record.get("train/loss", math.nan))
+        return float(fallback)
 
-    save_history_csv(history, exp_paths.results / "train_history.csv")
-    save_json({"history": history, "best_metric": {"name": save_metric, "value": best_score}}, exp_paths.results / "train_history.json")
-    logger.info(f"Training complete. Results saved under: {exp_paths.root}")
+    valid_records = [r for r in history if not math.isnan(metric_value(r))]
+    if best_metric_mode == "min":
+        best_record = min(valid_records or history, key=metric_value)
+    else:
+        best_record = max(valid_records or history, key=metric_value)
+    best_epoch = history.index(best_record) + 1
+
+    ckpt_payload = {
+        "epoch": best_epoch,
+        "state_dict": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "config": cfg,
+        "history": history,
+    }
+    torch.save(ckpt_payload, exp_paths.checkpoints / "best.pt")
+
+    summary = {
+        "model": model_name,
+        "dataset": cfg["data"].get("dataset"),
+        "device": resolved_device,
+        "best_epoch": best_epoch,
+        "best_record": best_record,
+        "num_train_batches": len(train_loader),
+        "num_val_batches": len(val_loader),
+    }
+    save_json(summary, exp_paths.results / "summary.json")
+    logger.info(f"Saved best checkpoint to {exp_paths.checkpoints / 'best.pt'}")
+    logger.info(f"Best epoch={best_epoch} metric={metric_value(best_record):.4f}")
 
 
 if __name__ == "__main__":
