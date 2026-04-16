@@ -6,6 +6,7 @@ cd "$PROJECT_ROOT"
 
 PYTHON_BIN="${PYTHON_BIN:-python}"
 CONFIG_DIR="${CONFIG_DIR:-configs}"
+ALLOW_INSECURE_DOWNLOAD="${ALLOW_INSECURE_DOWNLOAD:-0}"
 DATASET="${DATASET:-kvasir_seg}"
 DATA_ROOT="${DATA_ROOT:-data}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-outputs}"
@@ -15,7 +16,7 @@ MODELS_DEFAULT="unet,unet_cbam,unetpp,pranet,acsnet,hardnet_mseg,polyp_pvt,caran
 MODELS="${MODELS:-$MODELS_DEFAULT}"
 
 usage() {
-  cat <<EOF
+  cat <<EOF2
 Usage:
   bash run.sh install
   bash run.sh prepare [--source-dir PATH | --zip-path PATH | --download-url URL]
@@ -29,14 +30,15 @@ Usage:
 
 Environment overrides:
   PYTHON_BIN   Python executable (default: python)
-  CONFIG_DIR   Config directory (default: configs)
+  CONFIG_DIR   Config directory (default: configs; use configs/paper_fair for strict paper comparisons)
   DATASET      Dataset key (default: kvasir_seg)
   DATA_ROOT    Data root (default: data)
   OUTPUT_ROOT  Output root (default: outputs)
   IMAGE_SIZE   Image size (default: 352)
   DEVICE       Device string or auto (default: auto)
   MODELS       Comma-separated model list for train-all/eval-all/benchmark
-EOF
+  ALLOW_INSECURE_DOWNLOAD  Set to 1 to bypass TLS verification for dataset download when needed
+EOF2
 }
 
 cmd_install() {
@@ -45,10 +47,15 @@ cmd_install() {
 }
 
 cmd_prepare() {
+  local extra=()
+  if [[ "$ALLOW_INSECURE_DOWNLOAD" == "1" ]]; then
+    extra+=(--allow-insecure-download)
+  fi
   "$PYTHON_BIN" scripts/prepare_kvasir_seg.py \
     --dataset "$DATASET" \
     --data-root "$DATA_ROOT" \
     --image-size "$IMAGE_SIZE" \
+    "${extra[@]}" \
     "$@"
 }
 
@@ -110,6 +117,10 @@ cmd_eval_all() {
 }
 
 cmd_benchmark() {
+  local extra=()
+  if [[ "$ALLOW_INSECURE_DOWNLOAD" == "1" ]]; then
+    extra+=(--allow-insecure-download)
+  fi
   "$PYTHON_BIN" scripts/benchmark_all.py \
     --models "$MODELS" \
     --dataset "$DATASET" \
@@ -117,7 +128,8 @@ cmd_benchmark() {
     --data-root "$DATA_ROOT" \
     --image-size "$IMAGE_SIZE" \
     --device "$DEVICE" \
-    --output-root "$OUTPUT_ROOT"
+    --output-root "$OUTPUT_ROOT" \
+    "${extra[@]}"
 }
 
 cmd_export() {
