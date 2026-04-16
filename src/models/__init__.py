@@ -3,6 +3,7 @@ from .builder import build_model
 # Import modules for side-effect registration.
 from .baselines.acsnet import ACSNetLite
 from .baselines.caranet import CaraNetLite
+from .baselines.cfanet import CFANetLite
 from .baselines.hardnet_mseg import HarDNetMSEGLite
 from .baselines.polyp_pvt import PolypPVTLite
 from .baselines.pranet import PraNetLite
@@ -21,5 +22,6 @@ __all__ = [
     "HarDNetMSEGLite",
     "PolypPVTLite",
     "CaraNetLite",
+    "CFANetLite",
     "HFUNet",
 ]

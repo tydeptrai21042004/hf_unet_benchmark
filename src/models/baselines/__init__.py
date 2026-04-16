@@ -1,5 +1,6 @@
 from .acsnet import ACSNetLite
 from .caranet import CaraNetLite
+from .cfanet import CFANetLite
 from .hardnet_mseg import HarDNetMSEGLite
 from .polyp_pvt import PolypPVTLite
 from .pranet import PraNetLite
@@ -16,4 +17,5 @@ __all__ = [
     'HarDNetMSEGLite',
     'PolypPVTLite',
     'CaraNetLite',
+    'CFANetLite',
 ]
