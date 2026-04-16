@@ -16,7 +16,7 @@ train:
   scheduler: cosine
   t_max: 30
   eta_min: 1.0e-06
-  mixed_precision: true
+  mixed_precision: false
   grad_clip: null
   seed: 42
   loss: bce_dice
