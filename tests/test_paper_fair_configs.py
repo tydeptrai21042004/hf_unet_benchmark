@@ -10,7 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 PAPER_FAIR_DIR = PROJECT_ROOT / "configs" / "paper_fair"
-MODELS = ["unet", "unet_cbam", "unetpp", "pranet", "acsnet", "hardnet_mseg", "polyp_pvt", "caranet", "proposal_hf_unet"]
+MODELS = ["unet", "unet_cbam", "unetpp", "pranet", "acsnet", "hardnet_mseg", "polyp_pvt", "caranet", "cfanet", "proposal_hf_unet"]
 
 
 def load_cfg(name: str):
@@ -62,3 +62,10 @@ def test_paper_fair_output_root_is_separate_from_default_runs():
     for model_name in MODELS:
         cfg = load_cfg(model_name)
         assert cfg["experiment"]["output_root"] == "outputs_paper_fair"
+
+
+def test_paper_fair_scheduler_horizon_matches_epoch_budget():
+    for model_name in MODELS:
+        cfg = load_cfg(model_name)
+        assert cfg["train"]["epochs"] == 30
+        assert cfg["train"]["t_max"] == 30
