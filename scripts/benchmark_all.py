@@ -40,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-splits", action="store_true")
     parser.add_argument("--save-predictions", action="store_true")
     parser.add_argument("--save-visualizations", action="store_true")
+    parser.add_argument("--allow-insecure-download", action="store_true", help="Pass through to prepare_kvasir_seg.py for Kaggle-like TLS issues.")
     return parser.parse_args()
 
 
@@ -80,6 +81,8 @@ def build_prepare_cmd(args: argparse.Namespace, py: str) -> list[str]:
         cmd += ["--download-url", spec.default_download_url]
     if args.download_dst:
         cmd += ["--download-dst", args.download_dst]
+    if getattr(args, "allow_insecure_download", False):
+        cmd += ["--allow-insecure-download"]
     return cmd
 
 

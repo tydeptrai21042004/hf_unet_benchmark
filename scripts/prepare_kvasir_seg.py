@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import shutil
 import sys
 import zipfile
@@ -128,14 +129,14 @@ def _extract_zip(zip_path: Path, extract_dir: Path) -> Path:
     return dataset_root
 
 
-def _maybe_download(url: str, dst: Path) -> Path:
+def _maybe_download(url: str, dst: Path, *, verify: bool = True) -> Path:
     try:
         import requests
     except Exception as exc:  # pragma: no cover
         raise RuntimeError("requests is required for download mode. Install it or pass --zip-path/--source-dir.") from exc
 
     dst.parent.mkdir(parents=True, exist_ok=True)
-    with requests.get(url, stream=True, timeout=120) as response:
+    with requests.get(url, stream=True, timeout=120, verify=verify) as response:
         response.raise_for_status()
         with dst.open("wb") as f:
             for chunk in response.iter_content(chunk_size=1024 * 1024):
@@ -159,6 +160,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-size", type=int, default=352, help="Output square size for processed images/masks.")
     parser.add_argument("--skip-raw-copy", action="store_true", help="Do not copy files into data/raw/Kvasir-SEG.")
     parser.add_argument("--force", action="store_true", help="Rebuild processed outputs even if they already exist.")
+    parser.add_argument("--allow-insecure-download", action="store_true", help="Disable TLS certificate verification for dataset download. Use only when your environment cannot validate the dataset host certificate.")
     return parser.parse_args()
 
 
@@ -200,7 +202,8 @@ def main() -> None:
         elif download_url:
             download_dst = Path(args.download_dst) if args.download_dst else data_root / "downloads" / f"{dataset_name}.zip"
             print(f"Downloading {dataset_name} from: {download_url}")
-            zip_path = _maybe_download(download_url, download_dst)
+            allow_insecure = bool(args.allow_insecure_download or os.environ.get("ALLOW_INSECURE_DOWNLOAD", "").strip() in {"1", "true", "TRUE", "yes", "YES"})
+            zip_path = _maybe_download(download_url, download_dst, verify=not allow_insecure)
             dataset_root = _extract_zip(zip_path, data_root / "_tmp_extract")
         else:
             raise ValueError(
