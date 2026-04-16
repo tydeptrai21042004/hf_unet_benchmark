@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, MutableMapping, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, MutableMapping, Optional, Sequence, Tuple
 
 from PIL import Image
 from torch.utils.data import Dataset
@@ -32,7 +32,35 @@ def _resolve_existing_dir(candidates: Sequence[Path]) -> Optional[Path]:
     return None
 
 
-def infer_kvasir_paths(root: str | Path) -> KvasirPaths:
+def _resolve_processed_pair(root: Path, image_size: Optional[int] = None) -> Optional[KvasirPaths]:
+    processed_root = root / "processed"
+    if not processed_root.is_dir():
+        return None
+
+    if image_size is not None:
+        image_dir = processed_root / f"images_{image_size}"
+        mask_dir = processed_root / f"masks_{image_size}"
+        if image_dir.is_dir() and mask_dir.is_dir():
+            return KvasirPaths(image_dir=image_dir, mask_dir=mask_dir)
+
+    image_dir = processed_root / "images"
+    mask_dir = processed_root / "masks"
+    if image_dir.is_dir() and mask_dir.is_dir():
+        return KvasirPaths(image_dir=image_dir, mask_dir=mask_dir)
+
+    suffixes: list[str] = []
+    for path in processed_root.iterdir():
+        if path.is_dir() and path.name.startswith("images_"):
+            suffixes.append(path.name[len("images_"):])
+    for suffix in sorted(set(suffixes)):
+        image_dir = processed_root / f"images_{suffix}"
+        mask_dir = processed_root / f"masks_{suffix}"
+        if image_dir.is_dir() and mask_dir.is_dir():
+            return KvasirPaths(image_dir=image_dir, mask_dir=mask_dir)
+    return None
+
+
+def infer_kvasir_paths(root: str | Path, image_size: Optional[int] = None) -> KvasirPaths:
     """Infer image and mask directories from a benchmark-style root.
 
     Supported layouts include:
@@ -40,8 +68,8 @@ def infer_kvasir_paths(root: str | Path) -> KvasirPaths:
     1) processed benchmark layout
        root/
          processed/
-           images_352/
-           masks_352/
+           images_<size>/
+           masks_<size>/
 
     2) raw Kvasir-SEG layout
        root/
@@ -57,10 +85,12 @@ def infer_kvasir_paths(root: str | Path) -> KvasirPaths:
     """
     root = Path(root)
 
+    processed_pair = _resolve_processed_pair(root, image_size=image_size)
+    if processed_pair is not None:
+        return processed_pair
+
     image_dir = _resolve_existing_dir(
         [
-            root / "processed" / "images_352",
-            root / "processed" / "images",
             root / "raw" / "Kvasir-SEG" / "images",
             root / "Kvasir-SEG" / "images",
             root / "images",
@@ -68,8 +98,6 @@ def infer_kvasir_paths(root: str | Path) -> KvasirPaths:
     )
     mask_dir = _resolve_existing_dir(
         [
-            root / "processed" / "masks_352",
-            root / "processed" / "masks",
             root / "raw" / "Kvasir-SEG" / "masks",
             root / "Kvasir-SEG" / "masks",
             root / "masks",
@@ -77,35 +105,17 @@ def infer_kvasir_paths(root: str | Path) -> KvasirPaths:
     )
 
     if image_dir is None or mask_dir is None:
+        expected = "processed/images_<size> + processed/masks_<size>, raw/Kvasir-SEG/images + raw/Kvasir-SEG/masks, or images + masks"
         raise FileNotFoundError(
             "Could not infer Kvasir-SEG image/mask directories from root: "
-            f"{root}. Expected folders like processed/images_352 + processed/masks_352, "
-            "or raw/Kvasir-SEG/images + raw/Kvasir-SEG/masks, or images + masks."
+            f"{root}. Expected folders like {expected}."
         )
 
     return KvasirPaths(image_dir=image_dir, mask_dir=mask_dir)
 
 
 class KvasirSegDataset(Dataset):
-    """Binary segmentation dataset for Kvasir-SEG.
-
-    Parameters
-    ----------
-    root:
-        Project data root or dataset root.
-    split:
-        One of {"train", "val", "test"}. Used with `split_file` or inferred from `root/splits/{split}.txt`.
-    split_file:
-        Optional text file containing sample ids, one id per line.
-    image_dir, mask_dir:
-        Optional explicit image and mask directories. If omitted, they are inferred from `root`.
-    transform:
-        Callable that receives and returns a sample dict.
-    return_paths:
-        Whether to include full paths in the returned sample.
-    strict_pairing:
-        If True, raise when a split id or image does not have a mask. If False, silently skip invalid pairs.
-    """
+    """Binary segmentation dataset for Kvasir-SEG or compatible image/mask layouts."""
 
     def __init__(
         self,
@@ -114,6 +124,7 @@ class KvasirSegDataset(Dataset):
         split_file: Optional[str | Path] = None,
         image_dir: Optional[str | Path] = None,
         mask_dir: Optional[str | Path] = None,
+        image_size: Optional[int] = None,
         transform: Optional[Callable[[Sample], Sample]] = None,
         return_paths: bool = False,
         strict_pairing: bool = True,
@@ -124,9 +135,10 @@ class KvasirSegDataset(Dataset):
         self.return_paths = return_paths
         self.strict_pairing = strict_pairing
         self.transform = transform
+        self.image_size = image_size
 
         if image_dir is None or mask_dir is None:
-            inferred = infer_kvasir_paths(self.root)
+            inferred = infer_kvasir_paths(self.root, image_size=image_size)
             self.image_dir = inferred.image_dir if image_dir is None else Path(image_dir)
             self.mask_dir = inferred.mask_dir if mask_dir is None else Path(mask_dir)
         else:
@@ -146,7 +158,7 @@ class KvasirSegDataset(Dataset):
         self.samples = self._build_samples(split_file=split_file)
         if not self.samples:
             raise RuntimeError(
-                "No valid image-mask pairs found for Kvasir-SEG dataset. "
+                "No valid image-mask pairs found for dataset. "
                 f"image_dir={self.image_dir}, mask_dir={self.mask_dir}, split_file={split_file}"
             )
 
@@ -193,7 +205,6 @@ class KvasirSegDataset(Dataset):
                 samples.append((sample_id, image_path, mask_path))
             return samples
 
-        # No split file provided: enumerate from image directory.
         image_files = sorted(p for p in self.image_dir.iterdir() if p.is_file() and _is_image_file(p))
         for image_path in image_files:
             sample_id = image_path.stem
@@ -248,23 +259,27 @@ def build_kvasir_datasets(
     """Convenience factory for train/val/test datasets."""
     train_transform = build_train_transforms(image_size=image_size, normalize=normalize)
     eval_transform = build_eval_transforms(image_size=image_size, normalize=normalize)
+    resolved_size = image_size if isinstance(image_size, int) else None
 
     datasets = {
         "train": KvasirSegDataset(
             root=root,
             split=train_split,
+            image_size=resolved_size,
             transform=train_transform,
             return_paths=return_paths,
         ),
         "val": KvasirSegDataset(
             root=root,
             split=val_split,
+            image_size=resolved_size,
             transform=eval_transform,
             return_paths=return_paths,
         ),
         "test": KvasirSegDataset(
             root=root,
             split=test_split,
+            image_size=resolved_size,
             transform=eval_transform,
             return_paths=return_paths,
         ),
