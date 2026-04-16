@@ -18,6 +18,7 @@ MODELS = [
     'hardnet_mseg',
     'polyp_pvt',
     'caranet',
+    'cfanet',
     'proposal_hf_unet',
 ]
 
