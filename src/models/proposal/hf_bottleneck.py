@@ -28,8 +28,15 @@ class HartleyTransform2d(nn.Module):
     """
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        z = torch.fft.fft2(x, norm="ortho")
-        return z.real - z.imag
+        orig_dtype = x.dtype
+        fft_input = x
+        if x.is_cuda and x.dtype in (torch.float16, torch.bfloat16):
+            fft_input = x.float()
+        z = torch.fft.fft2(fft_input, norm="ortho")
+        y = z.real - z.imag
+        if y.dtype != orig_dtype and orig_dtype in (torch.float16, torch.bfloat16):
+            y = y.to(orig_dtype)
+        return y
 
 
 class FrequencyMixer(nn.Module):
