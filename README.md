@@ -10,7 +10,7 @@ Use `configs/paper_fair/` for strict paper comparisons. This preset aligns the t
 - same optimizer / scheduler: AdamW + cosine
 - same learning rate: 3e-4
 - same weight decay: 1e-4
-- same epochs: 120
+- same epochs: 30
 - same gradient clipping: 1.0
 - same segmentation loss: BCE+Dice
 - same threshold: 0.5
