@@ -1,21 +1,27 @@
-from .acsnet import ACSNetLite
-from .caranet import CaraNetLite
-from .cfanet import CFANetLite
-from .hardnet_mseg import HarDNetMSEGLite
-from .polyp_pvt import PolypPVTLite
-from .pranet import PraNetLite
+from .acsnet import ACSNet, ACSNetLite
+from .caranet import CaraNet, CaraNetLite
+from .cfanet import CFANet, CFANetLite
+from .hardnet_mseg import HarDNetMSEG, HarDNetMSEGLite
+from .polyp_pvt import PolypPVT, PolypPVTLite
+from .pranet import PraNet, PraNetLite
 from .unet import UNet
 from .unet_cbam import UNetCBAM
 from .unetpp import UNetPlusPlus
 
 __all__ = [
-    'UNet',
-    'UNetCBAM',
-    'UNetPlusPlus',
-    'PraNetLite',
-    'ACSNetLite',
-    'HarDNetMSEGLite',
-    'PolypPVTLite',
-    'CaraNetLite',
-    'CFANetLite',
+    "UNet",
+    "UNetCBAM",
+    "UNetPlusPlus",
+    "PraNet",
+    "PraNetLite",
+    "ACSNet",
+    "ACSNetLite",
+    "HarDNetMSEG",
+    "HarDNetMSEGLite",
+    "PolypPVT",
+    "PolypPVTLite",
+    "CaraNet",
+    "CaraNetLite",
+    "CFANet",
+    "CFANetLite",
 ]

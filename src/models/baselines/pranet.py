@@ -3,40 +3,14 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from ..common.blocks import ASPP, ConvNormAct, ReverseAttentionRefine
-from ..common.encoder import PyramidEncoder
+from ..common.paper_baselines import DenseAggregation, RFBModified, Res2NetLikeEncoder, ReverseAttentionBranch
 from ..common.utils import init_weights, resize_to
 from ..registry import register_model
 
 
-class PartialDecoder(nn.Module):
-    def __init__(self, channels: tuple[int, int, int], out_channels: int = 64, norm: str = "bn", act: str = "relu") -> None:
-        super().__init__()
-        c2, c3, c4 = channels
-        self.p4 = ConvNormAct(c4, out_channels, 1, padding=0, norm=norm, act=act)
-        self.p3 = ConvNormAct(c3, out_channels, 1, padding=0, norm=norm, act=act)
-        self.p2 = ConvNormAct(c2, out_channels, 1, padding=0, norm=norm, act=act)
-        self.fuse = nn.Sequential(
-            ConvNormAct(out_channels * 3, out_channels, 3, norm=norm, act=act),
-            ConvNormAct(out_channels, out_channels, 3, norm=norm, act=act),
-        )
-        self.head = nn.Conv2d(out_channels, 1, 1)
-
-    def forward(self, x2: torch.Tensor, x3: torch.Tensor, x4: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        p2 = self.p2(x2)
-        p3 = resize_to(self.p3(x3), p2)
-        p4 = resize_to(self.p4(x4), p2)
-        fused = self.fuse(torch.cat([p2, p3, p4], dim=1))
-        return self.head(fused), fused
-
-
 @register_model("pranet")
-class PraNetLite(nn.Module):
-    """A benchmark-friendly simplified PraNet-style model.
-
-    This is not a paper-faithful reproduction. It keeps the key ideas:
-    multi-scale aggregation + reverse-attention refinement.
-    """
+class PraNet(nn.Module):
+    """PraNet with RFB reduction, dense partial decoder, and three reverse-attention stages."""
 
     def __init__(
         self,
@@ -48,20 +22,33 @@ class PraNetLite(nn.Module):
     ) -> None:
         super().__init__()
         if num_classes != 1:
-            raise ValueError("PraNetLite currently supports binary segmentation only.")
-        self.encoder = PyramidEncoder(in_channels=in_channels, channels=channels, block="res", norm=norm, act=act)
-        self.context = ASPP(channels[-1], channels[-1], norm=norm, act=act)
-        self.partial_decoder = PartialDecoder((channels[2], channels[3], channels[4]), out_channels=64, norm=norm, act=act)
-        self.ra4 = ReverseAttentionRefine(channels[4], out_channels=1, norm=norm, act=act)
-        self.ra3 = ReverseAttentionRefine(channels[3], out_channels=1, norm=norm, act=act)
-        self.ra2 = ReverseAttentionRefine(channels[2], out_channels=1, norm=norm, act=act)
+            raise ValueError("PraNet currently supports binary segmentation only.")
+        if len(channels) != 5:
+            raise ValueError("PraNet expects exactly five encoder stages.")
+        self.encoder = Res2NetLikeEncoder(in_channels=in_channels, channels=channels)
+        agg_channels = max(channels[0], 16)
+        self.rfb2_1 = RFBModified(channels[2], agg_channels)
+        self.rfb3_1 = RFBModified(channels[3], agg_channels)
+        self.rfb4_1 = RFBModified(channels[4], agg_channels)
+        self.agg1 = DenseAggregation(agg_channels)
+        self.ra4 = ReverseAttentionBranch(channels[4], mid_channels=max(channels[4] // 2, 32), depth=4, kernel_size=5)
+        self.ra3 = ReverseAttentionBranch(channels[3], mid_channels=max(channels[3] // 4, 32), depth=3, kernel_size=3)
+        self.ra2 = ReverseAttentionBranch(channels[2], mid_channels=max(channels[2] // 2, 32), depth=3, kernel_size=3)
         init_weights(self)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x1, x2, x3, x4, x5 = self.encoder(x)
-        x5 = self.context(x5)
-        coarse, _ = self.partial_decoder(x3, x4, x5)
-        logit4 = self.ra4(x5, coarse)
-        logit3 = self.ra3(x4, logit4)
-        logit2 = self.ra2(x3, logit3)
-        return resize_to(logit2, x)
+        _, _, x2, x3, x4 = self.encoder(x)
+        x2_rfb = self.rfb2_1(x2)
+        x3_rfb = self.rfb3_1(x3)
+        x4_rfb = self.rfb4_1(x4)
+        ra5_feat = self.agg1(x4_rfb, x3_rfb, x2_rfb)
+        crop_4 = resize_to(ra5_feat, x4)
+        x4_refine = self.ra4(x4, crop_4)
+        crop_3 = resize_to(x4_refine, x3)
+        x3_refine = self.ra3(x3, crop_3)
+        crop_2 = resize_to(x3_refine, x2)
+        x2_refine = self.ra2(x2, crop_2)
+        return resize_to(x2_refine, x)
+
+
+PraNetLite = PraNet
