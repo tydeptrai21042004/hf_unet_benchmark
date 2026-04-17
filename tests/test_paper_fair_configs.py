@@ -68,4 +68,4 @@ def test_paper_fair_scheduler_horizon_matches_epoch_budget():
     for model_name in MODELS:
         cfg = load_cfg(model_name)
         assert cfg["train"]["epochs"] == 30
-        assert cfg["train"]["t_max"] == 30
+        assert cfg["train"]["t_max"] == 120

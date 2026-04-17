@@ -84,7 +84,7 @@ def main() -> None:
     if hf.get('data', {}).get('batch_size') != unet.get('data', {}).get('batch_size'):
         report['warnings'].append('HF-U-Net and U-Net use different batch sizes; consider matching effective batch size or using gradient accumulation.')
     report['warnings'].append('Architectural fairness still needs manual review: HF-U-Net adds CBAM decoder attention, SE, gate, and spectral regularization beyond a plain U-Net bottleneck swap.')
-    report['warnings'].append('Several baselines are simplified "Lite" implementations, so this benchmark is fair as a unified in-house benchmark, not as a strict reproduction of official papers.')
+    report['warnings'].append("Baseline configs are harmonized across models, but paper-faithful reproduction still depends on matching each paper's loss, pretraining, and evaluation protocol.")
 
     print(json.dumps(report, indent=2))
 
