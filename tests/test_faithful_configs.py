@@ -20,6 +20,7 @@ MODELS = [
     "polyp_pvt",
     "caranet",
     "cfanet",
+    "hsnet",
     "proposal_hf_unet_lite",
     "proposal_hf_unet",
 ]
@@ -57,3 +58,5 @@ def test_faithful_configs_enable_model_specific_supervision_when_needed():
     assert load_cfg("pranet")["train"]["loss"] == "structure"
     assert load_cfg("polyp_pvt")["train"]["aux_output_weights"] == [1.0]
     assert load_cfg("cfanet")["train"]["boundary_weight"] > 0.0
+    assert load_cfg("hsnet")["model"]["faithful_output"] is True
+    assert len(load_cfg("hsnet")["train"]["aux_output_weights"]) == 4

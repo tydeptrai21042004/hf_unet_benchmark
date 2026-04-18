@@ -21,10 +21,13 @@ from src.models.common.paper_baselines import (
     CamouflageIdentificationModule,
     CascadedFusionModule,
     CrossFeatureFusion,
+    CrossSemanticAttention,
     DenseAggregation,
+    HybridSemanticComplementaryModule,
     GlobalContextModule,
     HarDBlock,
     LocalContextAttention,
+    MultiScalePredictionModule,
     OverlapPatchEmbed,
     PVTTransformerBlock,
     RFBModified,
@@ -41,6 +44,7 @@ MODEL_MODULE_CONTRACTS = {
     "caranet": (CFPModule, AxialReverseAttention, DenseAggregation),
     "hardnet_mseg": (HarDBlock, RFBModified, DenseAggregation),
     "polyp_pvt": (OverlapPatchEmbed, PVTTransformerBlock, CascadedFusionModule, CamouflageIdentificationModule, SimilarityAggregationModule),
+    "hsnet": (CrossSemanticAttention, HybridSemanticComplementaryModule, MultiScalePredictionModule),
 }
 
 
@@ -54,6 +58,7 @@ MODEL_MODULE_CONTRACTS = {
     "caranet",
     "hardnet_mseg",
     "polyp_pvt",
+    "hsnet",
     "proposal_hf_unet",
 ])
 def test_default_config_builds_and_preserves_segmentation_shape(model_name: str):

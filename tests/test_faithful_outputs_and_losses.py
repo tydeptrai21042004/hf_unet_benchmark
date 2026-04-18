@@ -23,6 +23,7 @@ EXPECTED_AUX = {
     "polyp_pvt": 1,
     "caranet": 3,
     "cfanet": 4,
+    "hsnet": 4,
 }
 
 

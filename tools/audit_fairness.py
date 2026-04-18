@@ -11,12 +11,15 @@ CONFIG_DIR = PROJECT_ROOT / 'configs'
 
 MODELS = [
     'unet',
+    'unet_cbam',
     'unetpp',
     'pranet',
     'acsnet',
     'hardnet_mseg',
     'polyp_pvt',
     'caranet',
+    'cfanet',
+    'hsnet',
     'proposal_hf_unet',
 ]
 

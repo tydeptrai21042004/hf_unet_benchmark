@@ -34,3 +34,6 @@ If auto-download fails because of certificate validation on the dataset host:
 ```bash
 ALLOW_INSECURE_DOWNLOAD=1 CONFIG_DIR=configs/paper_fair OUTPUT_ROOT=outputs_paper_fair DEVICE=auto bash run.sh benchmark
 ```
+
+
+Added baseline: HSNet (adapted faithful implementation with CSA, HSC, and MSP modules).
