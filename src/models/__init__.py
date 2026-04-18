@@ -5,6 +5,7 @@ from .baselines.acsnet import ACSNet, ACSNetLite
 from .baselines.caranet import CaraNet, CaraNetLite
 from .baselines.cfanet import CFANet, CFANetLite
 from .baselines.hardnet_mseg import HarDNetMSEG, HarDNetMSEGLite
+from .baselines.hsnet import HSNet, HSNetLite
 from .baselines.polyp_pvt import PolypPVT, PolypPVTLite
 from .baselines.pranet import PraNet, PraNetLite
 from .baselines.unet import UNet
@@ -23,6 +24,8 @@ __all__ = [
     "ACSNetLite",
     "HarDNetMSEG",
     "HarDNetMSEGLite",
+    "HSNet",
+    "HSNetLite",
     "PolypPVT",
     "PolypPVTLite",
     "CaraNet",

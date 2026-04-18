@@ -307,6 +307,99 @@ class CrossFeatureFusion(nn.Module):
         return self.out(fused)
 
 
+class CrossSemanticAttention(nn.Module):
+    """HSNet-style cross-semantic attention bridging CNN and transformer features."""
+
+    def __init__(self, low_channels: int, high_channels: int, out_channels: int) -> None:
+        super().__init__()
+        self.low_proj = BasicConv2d(low_channels, out_channels, 3, padding=1)
+        self.high_proj = BasicConv2d(high_channels, out_channels, 3, padding=1)
+        self.low_gate = nn.Sequential(
+            BasicConv2d(out_channels * 2, out_channels, 3, padding=1),
+            nn.Conv2d(out_channels, out_channels, 1),
+            nn.Sigmoid(),
+        )
+        self.high_gate = nn.Sequential(
+            BasicConv2d(out_channels * 2, out_channels, 3, padding=1),
+            nn.Conv2d(out_channels, out_channels, 1),
+            nn.Sigmoid(),
+        )
+        self.out = BasicConv2d(out_channels * 2, out_channels, 3, padding=1)
+
+    def forward(self, low_feat: torch.Tensor, high_feat: torch.Tensor) -> torch.Tensor:
+        low = self.low_proj(low_feat)
+        high = resize_to(self.high_proj(high_feat), low_feat)
+        joint = torch.cat([low, high], dim=1)
+        low_refined = low * self.low_gate(joint)
+        high_refined = high * self.high_gate(joint)
+        return self.out(torch.cat([low_refined, high_refined], dim=1))
+
+
+class HybridSemanticComplementaryModule(nn.Module):
+    """HSNet-style decoder block mixing transformer semantics and CNN appearance cues."""
+
+    def __init__(self, cnn_channels: int, transformer_channels: int, decoder_channels: int, out_channels: int) -> None:
+        super().__init__()
+        self.cnn_proj = BasicConv2d(cnn_channels, out_channels, 3, padding=1)
+        self.trans_proj = BasicConv2d(transformer_channels, out_channels, 3, padding=1)
+        self.dec_proj = BasicConv2d(decoder_channels, out_channels, 3, padding=1) if decoder_channels > 0 else None
+        in_cat = out_channels * (3 if decoder_channels > 0 else 2)
+        self.local_branch = nn.Sequential(
+            BasicConv2d(in_cat, out_channels, 3, padding=1),
+            BasicConv2d(out_channels, out_channels, 3, padding=1),
+        )
+        self.global_branch = nn.Sequential(
+            BasicConv2d(out_channels, out_channels, 1),
+            AxialAttention2d(out_channels, heads=max(1, min(4, out_channels // 16))),
+            BasicConv2d(out_channels, out_channels, 3, padding=1),
+        )
+        self.fuse = BasicConv2d(out_channels * 2, out_channels, 3, padding=1)
+
+    def forward(
+        self,
+        cnn_feat: torch.Tensor,
+        transformer_feat: torch.Tensor,
+        decoder_feat: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        cnn = self.cnn_proj(cnn_feat)
+        trans = resize_to(self.trans_proj(transformer_feat), cnn_feat)
+        feats = [cnn, trans]
+        if decoder_feat is not None and self.dec_proj is not None:
+            feats.append(resize_to(self.dec_proj(decoder_feat), cnn_feat))
+        local = self.local_branch(torch.cat(feats, dim=1))
+        global_seed = cnn + trans
+        if decoder_feat is not None and self.dec_proj is not None:
+            global_seed = global_seed + resize_to(self.dec_proj(decoder_feat), cnn_feat)
+        global_feat = self.global_branch(global_seed)
+        return self.fuse(torch.cat([local, global_feat], dim=1))
+
+
+class MultiScalePredictionModule(nn.Module):
+    """HSNet-style learnable fusion of stage-level prediction masks."""
+
+    def __init__(self, num_scales: int, refine: bool = True) -> None:
+        super().__init__()
+        self.weight_logits = nn.Parameter(torch.zeros(num_scales))
+        self.refine = nn.Sequential(
+            BasicConv2d(1, 8, 3, padding=1),
+            nn.Conv2d(8, 1, 1),
+        ) if refine else nn.Identity()
+
+    def normalized_weights(self) -> torch.Tensor:
+        return torch.softmax(self.weight_logits, dim=0)
+
+    def forward(self, logits: Sequence[torch.Tensor], target: torch.Tensor | tuple[int, int]) -> tuple[torch.Tensor, torch.Tensor]:
+        if isinstance(target, torch.Tensor):
+            size = target.shape[-2:]
+        else:
+            size = target
+        resized = [F.interpolate(logit, size=size, mode="bilinear", align_corners=False) for logit in logits]
+        weights = self.normalized_weights()
+        fused = sum(weight * logit for weight, logit in zip(weights, resized))
+        fused = fused + self.refine(fused)
+        return fused, weights
+
+
 class BoundaryAggregationModule(nn.Module):
     def __init__(self, feat_channels: int, boundary_channels: int) -> None:
         super().__init__()
