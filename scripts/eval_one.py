@@ -149,9 +149,22 @@ def main() -> None:
     model.load_state_dict(unwrap_state_dict(checkpoint), strict=True)
     threshold = float(cfg.get("eval", {}).get("threshold", 0.5))
     loss_fn = build_loss(str(cfg.get("eval", {}).get("loss", cfg.get("train", {}).get("loss", "bce_dice"))))
+    aux_loss_name = str(cfg.get("train", {}).get("aux_loss", cfg.get("train", {}).get("loss", "bce_dice")))
+    aux_loss_fn = build_loss(aux_loss_name) if cfg.get("train", {}).get("aux_output_weights") is not None else None
+    boundary_loss_name = cfg.get("train", {}).get("boundary_loss")
+    boundary_loss_fn = build_loss(str(boundary_loss_name)) if boundary_loss_name else None
 
-    evaluator = Evaluator(device=resolved_device, threshold=threshold, logger=logger)
-    metrics = evaluator.evaluate(model.to(resolved_device), dataloader, loss_fn=loss_fn)
+    evaluator = Evaluator(
+        device=resolved_device,
+        threshold=threshold,
+        logger=logger,
+        loss_fn=loss_fn,
+        aux_loss_fn=aux_loss_fn,
+        aux_weights=cfg.get("train", {}).get("aux_output_weights"),
+        boundary_loss_fn=boundary_loss_fn,
+        boundary_weight=float(cfg.get("train", {}).get("boundary_weight", 0.0)),
+    )
+    metrics = evaluator.evaluate(model.to(resolved_device), dataloader)
     payload = {
         "model": model_name,
         "dataset": dataset_name,

@@ -244,11 +244,19 @@ def main() -> None:
     optimizer = build_optimizer(model, cfg)
     scheduler = build_scheduler(optimizer, cfg)
     loss_fn = build_loss(str(cfg["train"].get("loss", "bce_dice")))
+    aux_loss_name = str(cfg["train"].get("aux_loss", cfg["train"].get("loss", "bce_dice")))
+    aux_loss_fn = build_loss(aux_loss_name) if cfg["train"].get("aux_output_weights") is not None else None
+    boundary_loss_name = cfg["train"].get("boundary_loss")
+    boundary_loss_fn = build_loss(str(boundary_loss_name)) if boundary_loss_name else None
 
     trainer = Trainer(
         model=model,
         optimizer=optimizer,
         loss_fn=loss_fn,
+        aux_loss_fn=aux_loss_fn,
+        aux_weights=cfg["train"].get("aux_output_weights"),
+        boundary_loss_fn=boundary_loss_fn,
+        boundary_weight=float(cfg["train"].get("boundary_weight", 0.0)),
         device=resolved_device,
         scheduler=scheduler,
         mixed_precision=bool(cfg["train"].get("mixed_precision", True)),
