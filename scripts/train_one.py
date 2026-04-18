@@ -224,7 +224,11 @@ def save_history_csv(history: list[Dict[str, Any]], path: Path) -> None:
 def main() -> None:
     args = parse_args()
     cfg = load_config_from_args(args)
-    seed_everything(int(cfg["train"].get("seed", 42)))
+    seed_everything(
+        int(cfg["train"].get("seed", 42)),
+        deterministic=bool(cfg["train"].get("deterministic", True)),
+        warn_only=bool(cfg["train"].get("deterministic_warn_only", True)),
+    )
 
     model_name = cfg["model"].get("name", args.model)
     exp_name = cfg["experiment"].get("name") or model_name

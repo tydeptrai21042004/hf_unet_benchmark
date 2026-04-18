@@ -22,6 +22,8 @@ train:
   loss: bce_dice
   lr: 0.0003
   mixed_precision: false
+  deterministic: true
+  deterministic_warn_only: true
   optimizer: adamw
   save_metric: dice
   save_metric_mode: max
