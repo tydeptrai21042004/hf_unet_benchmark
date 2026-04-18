@@ -80,3 +80,8 @@ class HFUNet(nn.Module):
             device = next(self.parameters()).device
             return torch.zeros((), device=device)
         return self.regularizer.from_module(self.hf_bottleneck)
+
+
+@register_model("proposal_hf_unet_lite")
+class HFUNetLite(HFUNet):
+    pass

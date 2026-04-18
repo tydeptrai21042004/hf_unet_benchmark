@@ -12,10 +12,11 @@ from ..registry import register_model
 class HarDNetMSEG(nn.Module):
     """HarDNet-MSEG with HarDNet-style encoder and cascaded partial decoder."""
 
-    def __init__(self, in_channels: int = 3, num_classes: int = 1, base_channels: int = 32, norm: str = "bn", act: str = "relu") -> None:
+    def __init__(self, in_channels: int = 3, num_classes: int = 1, base_channels: int = 32, faithful_output: bool = False, norm: str = "bn", act: str = "relu") -> None:
         super().__init__()
         if num_classes != 1:
             raise ValueError("HarDNet-MSEG currently supports binary segmentation only.")
+        self.faithful_output = faithful_output
         self.encoder = HarDNetLikeEncoder(in_channels=in_channels, base_channels=base_channels)
         # The transition layers of HarDNetLikeEncoder are deterministic from base_channels.
         ch2 = base_channels * 4

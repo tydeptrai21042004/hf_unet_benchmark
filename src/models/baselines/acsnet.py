@@ -11,13 +11,14 @@ from ..registry import register_model
 
 @register_model("acsnet")
 class ACSNet(nn.Module):
-    """ACSNet with Local Context Attention, Global Context Module, and Adaptive Selection Modules."""
+    """ACSNet-style baseline with Local Context Attention, GCM, and ASM blocks."""
 
     def __init__(
         self,
         in_channels: int = 3,
         num_classes: int = 1,
         channels: tuple[int, ...] = (32, 64, 128, 256, 512),
+        faithful_output: bool = False,
         norm: str = "bn",
         act: str = "relu",
     ) -> None:
@@ -27,6 +28,7 @@ class ACSNet(nn.Module):
         if len(channels) != 5:
             raise ValueError("ACSNet expects exactly five encoder stages.")
         c0, c1, c2, c3, c4 = channels
+        self.faithful_output = faithful_output
         self.encoder = Res2NetLikeEncoder(in_channels=in_channels, channels=channels)
         self.context_seed = BasicConv2d(c4, c3, 3, padding=1)
         self.gcm = GlobalContextModule(c4, decoder_channels=(c3, c2, c1, c0))
@@ -44,12 +46,12 @@ class ACSNet(nn.Module):
         self.pred0 = nn.Conv2d(c0, 1, 1)
         init_weights(self)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor):
         x0, x1, x2, x3, x4 = self.encoder(x)
         g3, g2, g1, g0 = self.gcm(x4, refs=(x3, x2, x1, x0))
-        d3 = self.context_seed(x4)
-        p3 = self.pred3(resize_to(d3, x3))
-        d3 = self.asm3(self.lca3(x3, p3), d3, g3)
+        d3_seed = self.context_seed(x4)
+        p3 = self.pred3(resize_to(d3_seed, x3))
+        d3 = self.asm3(self.lca3(x3, p3), d3_seed, g3)
 
         p2 = self.pred3(resize_to(d3, x2))
         d2 = self.asm2(self.lca2(x2, p2), d3, g2)
@@ -59,7 +61,14 @@ class ACSNet(nn.Module):
 
         p0 = self.pred1(resize_to(d1, x0))
         d0 = self.asm0(self.lca0(x0, p0), d1, g0)
-        return resize_to(self.pred0(d0), x)
+
+        y3 = resize_to(self.pred3(resize_to(d3, x3)), x)
+        y2 = resize_to(self.pred2(resize_to(d2, x2)), x)
+        y1 = resize_to(self.pred1(resize_to(d1, x1)), x)
+        y0 = resize_to(self.pred0(d0), x)
+        if self.faithful_output:
+            return {"main": y0, "aux": [y3, y2, y1]}
+        return y0
 
 
 ACSNetLite = ACSNet

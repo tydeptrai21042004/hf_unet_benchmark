@@ -10,13 +10,14 @@ from ..registry import register_model
 
 @register_model("pranet")
 class PraNet(nn.Module):
-    """PraNet with RFB reduction, dense partial decoder, and three reverse-attention stages."""
+    """PraNet-style baseline with RFB reduction, partial decoder, and reverse-attention refinement."""
 
     def __init__(
         self,
         in_channels: int = 3,
         num_classes: int = 1,
         channels: tuple[int, ...] = (32, 64, 128, 256, 512),
+        faithful_output: bool = False,
         norm: str = "bn",
         act: str = "relu",
     ) -> None:
@@ -25,6 +26,7 @@ class PraNet(nn.Module):
             raise ValueError("PraNet currently supports binary segmentation only.")
         if len(channels) != 5:
             raise ValueError("PraNet expects exactly five encoder stages.")
+        self.faithful_output = faithful_output
         self.encoder = Res2NetLikeEncoder(in_channels=in_channels, channels=channels)
         agg_channels = max(channels[0], 16)
         self.rfb2_1 = RFBModified(channels[2], agg_channels)
@@ -36,7 +38,7 @@ class PraNet(nn.Module):
         self.ra2 = ReverseAttentionBranch(channels[2], mid_channels=max(channels[2] // 2, 32), depth=3, kernel_size=3)
         init_weights(self)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor):
         _, _, x2, x3, x4 = self.encoder(x)
         x2_rfb = self.rfb2_1(x2)
         x3_rfb = self.rfb3_1(x3)
@@ -48,7 +50,14 @@ class PraNet(nn.Module):
         x3_refine = self.ra3(x3, crop_3)
         crop_2 = resize_to(x3_refine, x2)
         x2_refine = self.ra2(x2, crop_2)
-        return resize_to(x2_refine, x)
+
+        lateral_map_5 = resize_to(ra5_feat, x)
+        lateral_map_4 = resize_to(x4_refine, x)
+        lateral_map_3 = resize_to(x3_refine, x)
+        lateral_map_2 = resize_to(x2_refine, x)
+        if self.faithful_output:
+            return {"main": lateral_map_2, "aux": [lateral_map_5, lateral_map_4, lateral_map_3]}
+        return lateral_map_2
 
 
 PraNetLite = PraNet

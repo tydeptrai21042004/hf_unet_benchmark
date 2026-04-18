@@ -10,15 +10,16 @@ from ..registry import register_model
 
 @register_model("caranet")
 class CaraNet(nn.Module):
-    """CaraNet with CFP context modeling and axial reverse attention refinement."""
+    """CaraNet-style baseline with CFP context modeling and axial reverse attention refinement."""
 
-    def __init__(self, in_channels: int = 3, num_classes: int = 1, channels: tuple[int, ...] = (32, 64, 128, 256, 512), norm: str = "bn", act: str = "relu") -> None:
+    def __init__(self, in_channels: int = 3, num_classes: int = 1, channels: tuple[int, ...] = (32, 64, 128, 256, 512), faithful_output: bool = False, norm: str = "bn", act: str = "relu") -> None:
         super().__init__()
         if num_classes != 1:
             raise ValueError("CaraNet currently supports binary segmentation only.")
         if len(channels) != 5:
             raise ValueError("CaraNet expects exactly five encoder stages.")
         agg_channels = max(channels[0], 16)
+        self.faithful_output = faithful_output
         self.encoder = Res2NetLikeEncoder(in_channels=in_channels, channels=channels)
         self.cfp = CFPModule(channels[4], dilation=8)
         self.rfb2 = RFBModified(channels[2], agg_channels)
@@ -30,14 +31,21 @@ class CaraNet(nn.Module):
         self.ara2 = AxialReverseAttention(channels[2], hidden_channels=max(channels[2] // 2, 32))
         init_weights(self)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor):
         _, _, x2, x3, x4 = self.encoder(x)
         x4 = self.cfp(x4)
         coarse = self.agg(self.rfb4(x4), self.rfb3(x3), self.rfb2(x2))
         y4 = self.ara4(x4, resize_to(coarse, x4))
         y3 = self.ara3(x3, resize_to(y4, x3))
         y2 = self.ara2(x2, resize_to(y3, x2))
-        return resize_to(y2, x)
+
+        lateral_map_5 = resize_to(coarse, x)
+        lateral_map_4 = resize_to(y4, x)
+        lateral_map_3 = resize_to(y3, x)
+        lateral_map_2 = resize_to(y2, x)
+        if self.faithful_output:
+            return {"main": lateral_map_2, "aux": [lateral_map_5, lateral_map_4, lateral_map_3]}
+        return lateral_map_2
 
 
 CaraNetLite = CaraNet
