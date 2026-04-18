@@ -19,6 +19,7 @@ MODELS = [
     'polyp_pvt',
     'caranet',
     'cfanet',
+    'hsnet',
     'proposal_hf_unet',
 ]
 

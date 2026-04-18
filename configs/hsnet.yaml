@@ -1,37 +1,37 @@
-experiment:
-  output_root: outputs_fair
-  name: polyp_pvt
 data:
   root: data
   image_size: 352
-  batch_size: 6
+  batch_size: 8
   num_workers: 4
   pin_memory: true
-  augmentation: strong
+  augmentation: baseline
 train:
-  epochs: 120
+  epochs: 30
   lr: 0.0003
   weight_decay: 0.0001
   optimizer: adamw
   scheduler: cosine
   t_max: 30
   eta_min: 1.0e-06
-  mixed_precision: true
+  mixed_precision: false
   grad_clip: 1.0
   seed: 42
+  deterministic: true
+  deterministic_warn_only: true
   loss: bce_dice
   threshold: 0.5
   aux_loss_weight: 0.0
   aux_warmup_epochs: 0
   aux_ramp_epochs: 0
-  save_metric: dice
-  save_metric_mode: max
 eval:
   loss: bce_dice
   threshold: 0.5
   device: null
+experiment:
+  name: hsnet
+  output_root: outputs
 model:
-  name: polyp_pvt
+  name: hsnet
   in_channels: 3
   num_classes: 1
   channels:
@@ -39,5 +39,13 @@ model:
   - 64
   - 128
   - 256
+  - 512
+  transformer_channels:
+  - 32
+  - 64
+  - 128
+  - 256
+  decoder_channels: 64
+  faithful_output: false
   norm: bn
-  act: gelu
+  act: relu
