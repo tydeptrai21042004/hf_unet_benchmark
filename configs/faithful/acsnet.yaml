@@ -17,7 +17,10 @@ train:
   aux_ramp_epochs: 0
   aux_warmup_epochs: 0
   aux_loss: bce_dice
-  aux_output_weights: [0.5, 0.7, 1.0]
+  aux_output_weights:
+  - 0.5
+  - 0.7
+  - 1.0
   epochs: 30
   eta_min: 1.0e-06
   grad_clip: 1.0
@@ -36,7 +39,15 @@ model:
   name: acsnet
   in_channels: 3
   num_classes: 1
-  channels: [32, 64, 128, 256, 512]
+  channels:
+  - 32
+  - 64
+  - 128
+  - 256
+  - 512
   faithful_output: true
   norm: bn
   act: relu
+  backbone_impl: official
+  backbone_pretrained: false
+  res2net_variant: res2net50_v1b_26w_4s_fast

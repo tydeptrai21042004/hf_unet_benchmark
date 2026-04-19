@@ -54,8 +54,8 @@ def test_all_faithful_baselines_support_one_training_step(model_name: str):
     model = build_model(model_name, cfg["model"])
     model.train()
 
-    x = torch.randn(2, 3, 64, 64)
-    masks = torch.randint(0, 2, (2, 1, 64, 64), dtype=torch.float32)
+    x = torch.randn(2, 3, 32, 32)
+    masks = torch.randint(0, 2, (2, 1, 32, 32), dtype=torch.float32)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
     optimizer.zero_grad(set_to_none=True)

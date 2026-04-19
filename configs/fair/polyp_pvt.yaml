@@ -41,3 +41,7 @@ model:
   - 256
   norm: bn
   act: gelu
+  backbone_impl: official
+  backbone_pretrained: false
+  pvt_variant: pvt_v2_b0_fast
+  image_size: 352

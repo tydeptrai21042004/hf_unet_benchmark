@@ -41,11 +41,11 @@ def test_hsnet_forward_shape_matches_binary_segmentation_contract():
         },
     )
     model.eval()
-    x = torch.randn(2, 3, 128, 128)
+    x = torch.randn(1, 3, 64, 64)
     with torch.no_grad():
         y = model(x)
     parsed = parse_model_output(y)
-    assert parsed.main.shape == (2, 1, 128, 128)
+    assert parsed.main.shape == (1, 1, 64, 64)
     assert len(parsed.aux) == 4
     assert parsed.extras is not None
     assert "msp_weights" in parsed.extras

@@ -3,22 +3,17 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from ..common.paper_baselines import (
-    BasicConv2d,
-    CamouflageIdentificationModule,
-    CascadedFusionModule,
-    PVTLikeBackbone,
-    SimilarityAggregationModule,
-)
-from ..common.utils import init_weights, resize_to
+from ..common.official_backbones import OfficialPVTv2Backbone
+from ..common.paper_baselines import BasicConv2d, CamouflageIdentificationModule, CascadedFusionModule, PVTLikeBackbone, SimilarityAggregationModule
+from ..common.utils import resize_to
 from ..registry import register_model
 
 
 @register_model("polyp_pvt")
 class PolypPVT(nn.Module):
-    """Polyp-PVT-style baseline with PVT-like encoder, CFM, CIM, and SAM modules."""
+    """Polyp-PVT-style baseline with optional official PVTv2 backbone."""
 
-    def __init__(self, in_channels: int = 3, num_classes: int = 1, channels: tuple[int, ...] = (32, 64, 128, 256), faithful_output: bool = False, norm: str = "bn", act: str = "gelu") -> None:
+    def __init__(self, in_channels: int = 3, num_classes: int = 1, channels: tuple[int, ...] = (32, 64, 128, 256), faithful_output: bool = False, norm: str = "bn", act: str = "gelu", backbone_impl: str = "official", pvt_variant: str = "pvt_v2_b2", backbone_pretrained: bool = False, backbone_checkpoint: str | None = None, backbone_checkpoint_url: str | None = None, image_size: int = 352) -> None:
         super().__init__()
         if num_classes != 1:
             raise ValueError("Polyp-PVT currently supports binary segmentation only.")
@@ -26,7 +21,10 @@ class PolypPVT(nn.Module):
             raise ValueError("Polyp-PVT expects four backbone channel values.")
         c1, c2, c3, c4 = channels
         self.faithful_output = faithful_output
-        self.backbone = PVTLikeBackbone(in_channels=in_channels, embed_dims=channels)
+        if backbone_impl.lower() in {"official", "official_backbone"}:
+            self.backbone = OfficialPVTv2Backbone(in_channels=in_channels, embed_dims=channels, variant=pvt_variant, pretrained=backbone_pretrained, checkpoint=backbone_checkpoint, checkpoint_url=backbone_checkpoint_url, image_size=image_size)
+        else:
+            self.backbone = PVTLikeBackbone(in_channels=in_channels, embed_dims=channels)
         fusion_channels = max(c2, 32)
         self.cfm = CascadedFusionModule(c2, c3, c4, fusion_channels)
         self.coarse_head = nn.Conv2d(fusion_channels, 1, 1)
@@ -37,7 +35,6 @@ class PolypPVT(nn.Module):
             BasicConv2d(fusion_channels, fusion_channels, 3, padding=1),
             nn.Conv2d(fusion_channels, 1, 1),
         )
-        init_weights(self)
 
     def forward(self, x: torch.Tensor):
         x1, x2, x3, x4 = self.backbone(x)

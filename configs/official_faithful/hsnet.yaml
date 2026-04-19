@@ -10,10 +10,15 @@ eval:
   loss: bce_dice
   threshold: 0.5
 experiment:
-  output_root: outputs_fair
+  output_root: outputs_faithful
   name: hsnet
 train:
-  aux_loss_weight: 0.0
+  aux_loss_weight: 1.0
+  aux_output_weights:
+  - 0.4
+  - 0.6
+  - 0.8
+  - 1.0
   aux_ramp_epochs: 0
   aux_warmup_epochs: 0
   epochs: 30
@@ -48,11 +53,13 @@ model:
   - 128
   - 256
   decoder_channels: 64
-  faithful_output: false
+  faithful_output: true
   norm: bn
   act: relu
   backbone_impl: official
-  backbone_pretrained: false
-  res2net_variant: res2net50_v1b_26w_4s_fast
-  pvt_variant: pvt_v2_b0_fast
+  backbone_pretrained: true
+  res2net_variant: res2net50_v1b_26w_4s
+  pvt_variant: pvt_v2_b2
   image_size: 352
+  cnn_backbone_checkpoint_url: https://shanghuagao.oss-cn-beijing.aliyuncs.com/res2net/res2net50_v1b_26w_4s-3cf99910.pth
+  transformer_backbone_checkpoint_url: https://github.com/whai362/PVT/releases/download/v2/pvt_v2_b2.pth
