@@ -3,14 +3,15 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
+from ..common.official_backbones import OfficialRes2NetEncoder
 from ..common.paper_baselines import DenseAggregation, RFBModified, Res2NetLikeEncoder, ReverseAttentionBranch
-from ..common.utils import init_weights, resize_to
+from ..common.utils import resize_to
 from ..registry import register_model
 
 
 @register_model("pranet")
 class PraNet(nn.Module):
-    """PraNet-style baseline with RFB reduction, partial decoder, and reverse-attention refinement."""
+    """PraNet-style baseline with optional official Res2Net backbone."""
 
     def __init__(
         self,
@@ -20,6 +21,11 @@ class PraNet(nn.Module):
         faithful_output: bool = False,
         norm: str = "bn",
         act: str = "relu",
+        backbone_impl: str = "official",
+        res2net_variant: str = "res2net50_v1b_26w_4s",
+        backbone_pretrained: bool = False,
+        backbone_checkpoint: str | None = None,
+        backbone_checkpoint_url: str | None = None,
     ) -> None:
         super().__init__()
         if num_classes != 1:
@@ -27,7 +33,17 @@ class PraNet(nn.Module):
         if len(channels) != 5:
             raise ValueError("PraNet expects exactly five encoder stages.")
         self.faithful_output = faithful_output
-        self.encoder = Res2NetLikeEncoder(in_channels=in_channels, channels=channels)
+        if backbone_impl.lower() in {"official", "official_backbone"}:
+            self.encoder = OfficialRes2NetEncoder(
+                in_channels=in_channels,
+                channels=channels,
+                variant=res2net_variant,
+                pretrained=backbone_pretrained,
+                checkpoint=backbone_checkpoint,
+                checkpoint_url=backbone_checkpoint_url,
+            )
+        else:
+            self.encoder = Res2NetLikeEncoder(in_channels=in_channels, channels=channels)
         agg_channels = max(channels[0], 16)
         self.rfb2_1 = RFBModified(channels[2], agg_channels)
         self.rfb3_1 = RFBModified(channels[3], agg_channels)
@@ -36,7 +52,6 @@ class PraNet(nn.Module):
         self.ra4 = ReverseAttentionBranch(channels[4], mid_channels=max(channels[4] // 2, 32), depth=4, kernel_size=5)
         self.ra3 = ReverseAttentionBranch(channels[3], mid_channels=max(channels[3] // 4, 32), depth=3, kernel_size=3)
         self.ra2 = ReverseAttentionBranch(channels[2], mid_channels=max(channels[2] // 2, 32), depth=3, kernel_size=3)
-        init_weights(self)
 
     def forward(self, x: torch.Tensor):
         _, _, x2, x3, x4 = self.encoder(x)
