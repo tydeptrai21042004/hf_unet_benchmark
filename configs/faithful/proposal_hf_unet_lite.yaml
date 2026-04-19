@@ -10,8 +10,8 @@ eval:
   loss: bce_dice
   threshold: 0.5
 experiment:
-  output_root: outputs_paper_fair
-  name: unet
+  output_root: outputs_faithful
+  name: proposal_hf_unet_lite
 train:
   aux_loss_weight: 0.0
   aux_ramp_epochs: 0
@@ -22,8 +22,6 @@ train:
   loss: bce_dice
   lr: 0.0003
   mixed_precision: false
-  deterministic: true
-  deterministic_warn_only: true
   optimizer: adamw
   save_metric: dice
   save_metric_mode: max
@@ -33,14 +31,23 @@ train:
   threshold: 0.5
   weight_decay: 0.0001
 model:
-  name: unet
+  name: proposal_hf_unet_lite
   in_channels: 3
   num_classes: 1
-  channels:
-  - 32
-  - 64
-  - 128
-  - 256
-  - 512
+  channels: [32, 64, 128, 224, 352]
+  hf_alpha: 0.5
+  hf_alpha_start: 0.5
+  hf_alpha_warmup_epochs: 0
+  hf_expansion: 1.25
+  hf_dropout: 0.1
+  use_hf_regularizer: false
   norm: bn
   act: relu
+  hf_block_norm: gn
+  hf_block_act: gelu
+  mixer_act: identity
+  use_se: false
+  use_gate: true
+  gate_init_bias: -2.0
+  decoder_use_cbam: false
+  identity_init: true

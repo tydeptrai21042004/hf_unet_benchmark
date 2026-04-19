@@ -10,7 +10,7 @@ eval:
   loss: bce_dice
   threshold: 0.5
 experiment:
-  output_root: outputs_paper_fair
+  output_root: outputs_faithful
   name: unet
 train:
   aux_loss_weight: 0.0
@@ -22,8 +22,6 @@ train:
   loss: bce_dice
   lr: 0.0003
   mixed_precision: false
-  deterministic: true
-  deterministic_warn_only: true
   optimizer: adamw
   save_metric: dice
   save_metric_mode: max
@@ -36,11 +34,6 @@ model:
   name: unet
   in_channels: 3
   num_classes: 1
-  channels:
-  - 32
-  - 64
-  - 128
-  - 256
-  - 512
+  channels: [32, 64, 128, 256, 512]
   norm: bn
   act: relu

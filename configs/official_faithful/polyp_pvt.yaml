@@ -7,23 +7,24 @@ data:
   root: data
 eval:
   device: null
-  loss: bce_dice
+  loss: structure
   threshold: 0.5
 experiment:
-  output_root: outputs_paper_fair
-  name: unet
+  output_root: outputs_faithful
+  name: polyp_pvt
 train:
   aux_loss_weight: 0.0
   aux_ramp_epochs: 0
   aux_warmup_epochs: 0
+  aux_loss: structure
+  aux_output_weights:
+  - 1.0
   epochs: 30
   eta_min: 1.0e-06
   grad_clip: 1.0
-  loss: bce_dice
+  loss: structure
   lr: 0.0003
   mixed_precision: false
-  deterministic: true
-  deterministic_warn_only: true
   optimizer: adamw
   save_metric: dice
   save_metric_mode: max
@@ -33,7 +34,7 @@ train:
   threshold: 0.5
   weight_decay: 0.0001
 model:
-  name: unet
+  name: polyp_pvt
   in_channels: 3
   num_classes: 1
   channels:
@@ -41,6 +42,11 @@ model:
   - 64
   - 128
   - 256
-  - 512
+  faithful_output: true
   norm: bn
-  act: relu
+  act: gelu
+  backbone_impl: official
+  backbone_pretrained: true
+  pvt_variant: pvt_v2_b2
+  image_size: 352
+  backbone_checkpoint_url: https://github.com/whai362/PVT/releases/download/v2/pvt_v2_b2.pth

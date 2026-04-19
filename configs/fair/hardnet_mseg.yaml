@@ -14,7 +14,7 @@ train:
   weight_decay: 0.0001
   optimizer: adamw
   scheduler: cosine
-  t_max: 120
+  t_max: 30
   eta_min: 1.0e-06
   mixed_precision: true
   grad_clip: 1.0
@@ -37,3 +37,6 @@ model:
   base_channels: 32
   norm: bn
   act: relu
+  backbone_impl: official
+  backbone_pretrained: false
+  hardnet_arch: 68

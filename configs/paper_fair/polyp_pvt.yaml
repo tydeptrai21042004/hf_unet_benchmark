@@ -22,12 +22,14 @@ train:
   loss: bce_dice
   lr: 0.0003
   mixed_precision: false
+  deterministic: true
+  deterministic_warn_only: true
   optimizer: adamw
   save_metric: dice
   save_metric_mode: max
   scheduler: cosine
   seed: 42
-  t_max: 120
+  t_max: 30
   threshold: 0.5
   weight_decay: 0.0001
 model:
@@ -41,3 +43,7 @@ model:
   - 256
   norm: bn
   act: gelu
+  backbone_impl: official
+  backbone_pretrained: false
+  pvt_variant: pvt_v2_b0_fast
+  image_size: 352

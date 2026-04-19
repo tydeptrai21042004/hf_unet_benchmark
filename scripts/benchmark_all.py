@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.datasets import get_dataset_spec, normalize_dataset_name
 from src.utils import resolve_device
 
-DEFAULT_MODELS = "unet,unet_cbam,unetpp,pranet,acsnet,hardnet_mseg,polyp_pvt,caranet,cfanet,proposal_hf_unet"
+DEFAULT_MODELS = "unet,unet_cbam,unetpp,pranet,acsnet,hardnet_mseg,polyp_pvt,caranet,cfanet,hsnet,proposal_hf_unet"
 
 
 def parse_args() -> argparse.Namespace:

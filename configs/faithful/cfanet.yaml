@@ -10,20 +10,22 @@ eval:
   loss: bce_dice
   threshold: 0.5
 experiment:
-  output_root: outputs_paper_fair
-  name: unet
+  output_root: outputs_faithful
+  name: cfanet
 train:
   aux_loss_weight: 0.0
   aux_ramp_epochs: 0
   aux_warmup_epochs: 0
+  aux_loss: bce_dice
+  aux_output_weights: [0.3, 0.5, 0.7, 1.0]
+  boundary_loss: bce_dice
+  boundary_weight: 0.25
   epochs: 30
   eta_min: 1.0e-06
   grad_clip: 1.0
   loss: bce_dice
   lr: 0.0003
   mixed_precision: false
-  deterministic: true
-  deterministic_warn_only: true
   optimizer: adamw
   save_metric: dice
   save_metric_mode: max
@@ -33,14 +35,12 @@ train:
   threshold: 0.5
   weight_decay: 0.0001
 model:
-  name: unet
+  name: cfanet
   in_channels: 3
   num_classes: 1
-  channels:
-  - 32
-  - 64
-  - 128
-  - 256
-  - 512
+  channels: [32, 64, 128, 256, 512]
+  aggregation_channels: 64
+  boundary_channels: 32
+  faithful_output: true
   norm: bn
   act: relu

@@ -7,11 +7,11 @@ data:
   root: data
 eval:
   device: null
-  loss: bce_dice
+  loss: structure
   threshold: 0.5
 experiment:
-  output_root: outputs_paper_fair
-  name: unet
+  output_root: outputs_faithful
+  name: hardnet_mseg
 train:
   aux_loss_weight: 0.0
   aux_ramp_epochs: 0
@@ -19,11 +19,9 @@ train:
   epochs: 30
   eta_min: 1.0e-06
   grad_clip: 1.0
-  loss: bce_dice
+  loss: structure
   lr: 0.0003
   mixed_precision: false
-  deterministic: true
-  deterministic_warn_only: true
   optimizer: adamw
   save_metric: dice
   save_metric_mode: max
@@ -33,14 +31,13 @@ train:
   threshold: 0.5
   weight_decay: 0.0001
 model:
-  name: unet
+  name: hardnet_mseg
   in_channels: 3
   num_classes: 1
-  channels:
-  - 32
-  - 64
-  - 128
-  - 256
-  - 512
+  base_channels: 32
   norm: bn
   act: relu
+  backbone_impl: official
+  backbone_pretrained: true
+  hardnet_arch: 68
+  backbone_checkpoint_url: https://ping-chao.com/hardnet/hardnet68-5d684880.pth

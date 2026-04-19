@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convenience entrypoint for the matched fair benchmark recipe."""
+"""Convenience entrypoint for the core-faithful benchmark recipe."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ MODELS = [
     'caranet',
     'cfanet',
     'hsnet',
+    'proposal_hf_unet_lite',
     'proposal_hf_unet',
 ]
 
@@ -28,7 +29,7 @@ def main() -> None:
     cmd = [
         sys.executable,
         str(PROJECT_ROOT / 'scripts' / 'benchmark_all.py'),
-        '--config-dir', 'configs/fair',
+        '--config-dir', 'configs/faithful',
         '--models', ','.join(MODELS),
     ]
     print('[RUN]', ' '.join(cmd))

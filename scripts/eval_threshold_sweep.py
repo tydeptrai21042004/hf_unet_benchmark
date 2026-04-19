@@ -142,6 +142,10 @@ def main() -> None:
     device = resolve_device(cfg.get("eval", {}).get("device"))
     model = model.to(device)
     loss_fn = build_loss(str(cfg.get("eval", {}).get("loss", cfg.get("train", {}).get("loss", "bce_dice"))))
+    aux_loss_name = str(cfg.get("train", {}).get("aux_loss", cfg.get("train", {}).get("loss", "bce_dice")))
+    aux_loss_fn = build_loss(aux_loss_name) if cfg.get("train", {}).get("aux_output_weights") is not None else None
+    boundary_loss_name = cfg.get("train", {}).get("boundary_loss")
+    boundary_loss_fn = build_loss(str(boundary_loss_name)) if boundary_loss_name else None
 
     val_loader = build_loader(cfg, "val", device)
     test_loader = build_loader(cfg, "test", device)
@@ -157,8 +161,8 @@ def main() -> None:
     best_score = float("-inf")
     sweep_results = []
     for threshold in thresholds:
-        evaluator = Evaluator(device=device, threshold=threshold, logger=logger)
-        metrics = evaluator.evaluate(model, val_loader, loss_fn=loss_fn)
+        evaluator = Evaluator(device=device, threshold=threshold, logger=logger, loss_fn=loss_fn, aux_loss_fn=aux_loss_fn, aux_weights=cfg.get("train", {}).get("aux_output_weights"), boundary_loss_fn=boundary_loss_fn, boundary_weight=float(cfg.get("train", {}).get("boundary_weight", 0.0)))
+        metrics = evaluator.evaluate(model, val_loader)
         score = float(metrics.get(args.metric, metrics.get("dice", 0.0)))
         sweep_results.append({"threshold": threshold, **metrics})
         if score > best_score:
@@ -166,7 +170,7 @@ def main() -> None:
             best_threshold = threshold
             best_metrics = metrics
 
-    test_metrics = Evaluator(device=device, threshold=best_threshold, logger=logger).evaluate(model, test_loader, loss_fn=loss_fn)
+    test_metrics = Evaluator(device=device, threshold=best_threshold, logger=logger, loss_fn=loss_fn, aux_loss_fn=aux_loss_fn, aux_weights=cfg.get("train", {}).get("aux_output_weights"), boundary_loss_fn=boundary_loss_fn, boundary_weight=float(cfg.get("train", {}).get("boundary_weight", 0.0))).evaluate(model, test_loader)
     payload = {
         "model": model_name,
         "dataset": normalize_dataset_name(cfg["data"].get("dataset")),

@@ -10,20 +10,23 @@ eval:
   loss: bce_dice
   threshold: 0.5
 experiment:
-  output_root: outputs_paper_fair
-  name: unet
+  output_root: outputs_faithful
+  name: acsnet
 train:
   aux_loss_weight: 0.0
   aux_ramp_epochs: 0
   aux_warmup_epochs: 0
+  aux_loss: bce_dice
+  aux_output_weights:
+  - 0.5
+  - 0.7
+  - 1.0
   epochs: 30
   eta_min: 1.0e-06
   grad_clip: 1.0
   loss: bce_dice
   lr: 0.0003
   mixed_precision: false
-  deterministic: true
-  deterministic_warn_only: true
   optimizer: adamw
   save_metric: dice
   save_metric_mode: max
@@ -33,7 +36,7 @@ train:
   threshold: 0.5
   weight_decay: 0.0001
 model:
-  name: unet
+  name: acsnet
   in_channels: 3
   num_classes: 1
   channels:
@@ -42,5 +45,10 @@ model:
   - 128
   - 256
   - 512
+  faithful_output: true
   norm: bn
   act: relu
+  backbone_impl: official
+  backbone_pretrained: true
+  res2net_variant: res2net50_v1b_26w_4s
+  backbone_checkpoint_url: https://shanghuagao.oss-cn-beijing.aliyuncs.com/res2net/res2net50_v1b_26w_4s-3cf99910.pth
