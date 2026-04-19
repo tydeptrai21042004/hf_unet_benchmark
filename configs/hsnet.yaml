@@ -49,3 +49,8 @@ model:
   faithful_output: false
   norm: bn
   act: relu
+  backbone_impl: official
+  backbone_pretrained: false
+  res2net_variant: res2net50_v1b_26w_4s_fast
+  pvt_variant: pvt_v2_b0_fast
+  image_size: 352

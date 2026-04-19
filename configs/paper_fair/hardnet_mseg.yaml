@@ -39,3 +39,6 @@ model:
   base_channels: 32
   norm: bn
   act: relu
+  backbone_impl: official
+  backbone_pretrained: false
+  hardnet_arch: 68

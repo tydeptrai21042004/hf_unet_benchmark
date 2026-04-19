@@ -7,23 +7,26 @@ data:
   root: data
 eval:
   device: null
-  loss: bce_dice
+  loss: structure
   threshold: 0.5
 experiment:
-  output_root: outputs_fair
-  name: hsnet
+  output_root: outputs_faithful
+  name: pranet
 train:
   aux_loss_weight: 0.0
   aux_ramp_epochs: 0
   aux_warmup_epochs: 0
+  aux_loss: structure
+  aux_output_weights:
+  - 1.0
+  - 1.0
+  - 1.0
   epochs: 30
   eta_min: 1.0e-06
   grad_clip: 1.0
-  loss: bce_dice
+  loss: structure
   lr: 0.0003
   mixed_precision: false
-  deterministic: true
-  deterministic_warn_only: true
   optimizer: adamw
   save_metric: dice
   save_metric_mode: max
@@ -33,7 +36,7 @@ train:
   threshold: 0.5
   weight_decay: 0.0001
 model:
-  name: hsnet
+  name: pranet
   in_channels: 3
   num_classes: 1
   channels:
@@ -42,17 +45,10 @@ model:
   - 128
   - 256
   - 512
-  transformer_channels:
-  - 32
-  - 64
-  - 128
-  - 256
-  decoder_channels: 64
-  faithful_output: false
+  faithful_output: true
   norm: bn
   act: relu
   backbone_impl: official
-  backbone_pretrained: false
-  res2net_variant: res2net50_v1b_26w_4s_fast
-  pvt_variant: pvt_v2_b0_fast
-  image_size: 352
+  backbone_pretrained: true
+  res2net_variant: res2net50_v1b_26w_4s
+  backbone_checkpoint_url: https://shanghuagao.oss-cn-beijing.aliyuncs.com/res2net/res2net50_v1b_26w_4s-3cf99910.pth
