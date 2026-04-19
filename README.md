@@ -37,3 +37,24 @@ ALLOW_INSECURE_DOWNLOAD=1 CONFIG_DIR=configs/paper_fair OUTPUT_ROOT=outputs_pape
 
 
 Added baseline: HSNet (adapted faithful implementation with CSA, HSC, and MSP modules).
+
+
+## Official-backbone upgrade
+
+This repo now includes benchmark adapters for public official/public backbone implementations:
+
+- Res2Net for PraNet / ACSNet / CaraNet / HSNet
+- PVTv2 for Polyp-PVT / HSNet
+- HarDNet-68 for HarDNet-MSEG
+
+### Quick notes
+
+- Default configs are kept runnable on CPU/offline by using the new adapter layer without forcing checkpoint downloads.
+- Stronger official-style configs are provided in `configs/official_faithful/`.
+- To fetch public pretrained checkpoints, use:
+
+```bash
+python scripts/download_official_backbones.py --output-dir weights/official_backbones
+```
+
+Then point model checkpoint fields at the downloaded files in your YAML.
