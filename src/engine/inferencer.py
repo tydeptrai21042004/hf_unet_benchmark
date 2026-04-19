@@ -8,6 +8,7 @@ from PIL import Image
 import torch
 from torch.utils.data import DataLoader
 
+from ..engine.output_utils import parse_model_output
 from ..utils.visualization import save_prediction_triplet
 
 
@@ -27,7 +28,8 @@ class Inferencer:
     def predict_batch(self, images: torch.Tensor) -> torch.Tensor:
         self.model.eval()
         images = images.to(self.device, non_blocking=True)
-        logits = self.model(images)
+        model_output = self.model(images)
+        logits = parse_model_output(model_output).main
         probs = torch.sigmoid(logits)
         return probs
 

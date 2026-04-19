@@ -17,6 +17,8 @@ def _to_dict(config: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
 ALIASES = {
     "hf_unet": "proposal_hf_unet",
     "proposal": "proposal_hf_unet",
+    "hf_unet_lite": "proposal_hf_unet_lite",
+    "proposal_lite": "proposal_hf_unet_lite",
 }
 
 

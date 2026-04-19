@@ -17,11 +17,13 @@ class UNetPlusPlus(nn.Module):
         num_classes: int = 1,
         channels: tuple[int, ...] = (32, 64, 128, 256, 512),
         deep_supervision: bool = False,
+        faithful_output: bool = False,
         norm: str = "bn",
         act: str = "relu",
     ) -> None:
         super().__init__()
         self.deep_supervision = deep_supervision
+        self.faithful_output = faithful_output
         self.encoder = PyramidEncoder(in_channels=in_channels, channels=channels, block="double", norm=norm, act=act)
 
         c0, c1, c2, c3, c4 = channels
@@ -68,6 +70,13 @@ class UNetPlusPlus(nn.Module):
 
         x04 = self.x04(self._upcat(x00, x13, x01, x02, x03))
 
+        y1 = resize_to(self.head1(x01), x)
+        y2 = resize_to(self.head2(x02), x)
+        y3 = resize_to(self.head3(x03), x)
+        y4 = resize_to(self.head4(x04), x)
+
+        if self.deep_supervision and self.faithful_output:
+            return {"main": y4, "aux": [y1, y2, y3]}
         if self.deep_supervision:
-            return [self.head1(x01), self.head2(x02), self.head3(x03), self.head4(x04)]
-        return self.head4(x04)
+            return [y1, y2, y3, y4]
+        return y4

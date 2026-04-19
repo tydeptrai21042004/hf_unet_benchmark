@@ -3,50 +3,75 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from ..common.blocks import ASPP, CBAM, UpBlock
-from ..common.encoder import PyramidEncoder
-from ..common.utils import init_weights
+from ..common.official_backbones import OfficialRes2NetEncoder
+from ..common.paper_baselines import AdaptiveSelectionModule, GlobalContextModule, LocalContextAttention, Res2NetLikeEncoder, BasicConv2d
+from ..common.utils import resize_to
 from ..registry import register_model
 
 
-class AdaptiveContextSelection(nn.Module):
-    def __init__(self, channels: int, norm: str = "bn", act: str = "relu") -> None:
-        super().__init__()
-        self.aspp = ASPP(channels, channels, rates=(1, 3, 6, 9), norm=norm, act=act)
-        self.attn = CBAM(channels)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.attn(self.aspp(x))
-
-
 @register_model("acsnet")
-class ACSNetLite(nn.Module):
-    """Simplified ACSNet-style benchmark model with adaptive context selection."""
+class ACSNet(nn.Module):
+    """ACSNet-style baseline with optional official Res2Net backbone."""
 
     def __init__(
         self,
         in_channels: int = 3,
         num_classes: int = 1,
         channels: tuple[int, ...] = (32, 64, 128, 256, 512),
+        faithful_output: bool = False,
         norm: str = "bn",
         act: str = "relu",
+        backbone_impl: str = "official",
+        res2net_variant: str = "res2net50_v1b_26w_4s",
+        backbone_pretrained: bool = False,
+        backbone_checkpoint: str | None = None,
+        backbone_checkpoint_url: str | None = None,
     ) -> None:
         super().__init__()
-        self.encoder = PyramidEncoder(in_channels=in_channels, channels=channels, block="res", norm=norm, act=act)
-        self.context = AdaptiveContextSelection(channels[-1], norm=norm, act=act)
-        self.up4 = UpBlock(channels[4], channels[3], channels[3], norm=norm, act=act, use_cbam=True)
-        self.up3 = UpBlock(channels[3], channels[2], channels[2], norm=norm, act=act, use_cbam=True)
-        self.up2 = UpBlock(channels[2], channels[1], channels[1], norm=norm, act=act, use_cbam=True)
-        self.up1 = UpBlock(channels[1], channels[0], channels[0], norm=norm, act=act, use_cbam=True)
-        self.head = nn.Conv2d(channels[0], num_classes, 1)
-        init_weights(self)
+        if num_classes != 1:
+            raise ValueError("ACSNet currently supports binary segmentation only.")
+        if len(channels) != 5:
+            raise ValueError("ACSNet expects exactly five encoder stages.")
+        c0, c1, c2, c3, c4 = channels
+        self.faithful_output = faithful_output
+        if backbone_impl.lower() in {"official", "official_backbone"}:
+            self.encoder = OfficialRes2NetEncoder(in_channels=in_channels, channels=channels, variant=res2net_variant, pretrained=backbone_pretrained, checkpoint=backbone_checkpoint, checkpoint_url=backbone_checkpoint_url)
+        else:
+            self.encoder = Res2NetLikeEncoder(in_channels=in_channels, channels=channels)
+        self.context_seed = BasicConv2d(c4, c3, 3, padding=1)
+        self.gcm = GlobalContextModule(c4, decoder_channels=(c3, c2, c1, c0))
+        self.lca3 = LocalContextAttention(c3)
+        self.lca2 = LocalContextAttention(c2)
+        self.lca1 = LocalContextAttention(c1)
+        self.lca0 = LocalContextAttention(c0)
+        self.asm3 = AdaptiveSelectionModule(c3, c3, c3, c3)
+        self.asm2 = AdaptiveSelectionModule(c2, c3, c2, c2)
+        self.asm1 = AdaptiveSelectionModule(c1, c2, c1, c1)
+        self.asm0 = AdaptiveSelectionModule(c0, c1, c0, c0)
+        self.pred3 = nn.Conv2d(c3, 1, 1)
+        self.pred2 = nn.Conv2d(c2, 1, 1)
+        self.pred1 = nn.Conv2d(c1, 1, 1)
+        self.pred0 = nn.Conv2d(c0, 1, 1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        feats = self.encoder(x)
-        x0, x1, x2, x3, x4 = feats
-        x4 = self.context(x4)
-        d3 = self.up4(x4, x3)
-        d2 = self.up3(d3, x2)
-        d1 = self.up2(d2, x1)
-        d0 = self.up1(d1, x0)
-        return self.head(d0)
+    def forward(self, x: torch.Tensor):
+        x0, x1, x2, x3, x4 = self.encoder(x)
+        g3, g2, g1, g0 = self.gcm(x4, refs=(x3, x2, x1, x0))
+        d3_seed = self.context_seed(x4)
+        p3 = self.pred3(resize_to(d3_seed, x3))
+        d3 = self.asm3(self.lca3(x3, p3), d3_seed, g3)
+        p2 = self.pred3(resize_to(d3, x2))
+        d2 = self.asm2(self.lca2(x2, p2), d3, g2)
+        p1 = self.pred2(resize_to(d2, x1))
+        d1 = self.asm1(self.lca1(x1, p1), d2, g1)
+        p0 = self.pred1(resize_to(d1, x0))
+        d0 = self.asm0(self.lca0(x0, p0), d1, g0)
+        y3 = resize_to(self.pred3(resize_to(d3, x3)), x)
+        y2 = resize_to(self.pred2(resize_to(d2, x2)), x)
+        y1 = resize_to(self.pred1(resize_to(d1, x1)), x)
+        y0 = resize_to(self.pred0(d0), x)
+        if self.faithful_output:
+            return {"main": y0, "aux": [y3, y2, y1]}
+        return y0
+
+
+ACSNetLite = ACSNet
