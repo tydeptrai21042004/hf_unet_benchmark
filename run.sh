@@ -14,6 +14,7 @@ IMAGE_SIZE="${IMAGE_SIZE:-352}"
 DEVICE="${DEVICE:-auto}"
 MODELS_DEFAULT="unet,unet_cbam,unetpp,pranet,acsnet,hardnet_mseg,polyp_pvt,caranet,proposal_hf_unet"
 MODELS="${MODELS:-$MODELS_DEFAULT}"
+SEEDS="${SEEDS:-42,1337,2024}"
 
 usage() {
   cat <<EOF2
@@ -26,6 +27,8 @@ Usage:
   bash run.sh eval-one MODEL [SPLIT]
   bash run.sh eval-all [SPLIT]
   bash run.sh benchmark
+  bash run.sh benchmark-seeds
+  bash run.sh aggregate-seeds
   bash run.sh export
 
 Environment overrides:
@@ -37,6 +40,7 @@ Environment overrides:
   IMAGE_SIZE   Image size (default: 352)
   DEVICE       Device string or auto (default: auto)
   MODELS       Comma-separated model list for train-all/eval-all/benchmark
+  SEEDS        Comma-separated seeds for benchmark-seeds/aggregate-seeds (default: 42,1337,2024)
   ALLOW_INSECURE_DOWNLOAD  Set to 1 to bypass TLS verification for dataset download when needed
 EOF2
 }
@@ -51,7 +55,7 @@ cmd_prepare() {
   if [[ "$ALLOW_INSECURE_DOWNLOAD" == "1" ]]; then
     extra+=(--allow-insecure-download)
   fi
-  "$PYTHON_BIN" scripts/prepare_kvasir_seg.py \
+  "$PYTHON_BIN" scripts/prepare_dataset.py \
     --dataset "$DATASET" \
     --data-root "$DATA_ROOT" \
     --image-size "$IMAGE_SIZE" \
@@ -132,6 +136,31 @@ cmd_benchmark() {
     "${extra[@]}"
 }
 
+cmd_benchmark_seeds() {
+  local extra=()
+  if [[ "$ALLOW_INSECURE_DOWNLOAD" == "1" ]]; then
+    extra+=(--allow-insecure-download)
+  fi
+  "$PYTHON_BIN" scripts/benchmark_multi_seed.py \
+    --models "$MODELS" \
+    --dataset "$DATASET" \
+    --config-dir "$CONFIG_DIR" \
+    --data-root "$DATA_ROOT" \
+    --image-size "$IMAGE_SIZE" \
+    --device "$DEVICE" \
+    --output-root "$OUTPUT_ROOT" \
+    --seeds "$SEEDS" \
+    "${extra[@]}" \
+    "$@"
+}
+
+cmd_aggregate_seeds() {
+  "$PYTHON_BIN" scripts/aggregate_seed_results.py \
+    --output-root "$OUTPUT_ROOT" \
+    --seeds "$SEEDS" \
+    "$@"
+}
+
 cmd_export() {
   "$PYTHON_BIN" scripts/export_results.py --output-root "$OUTPUT_ROOT"
 }
@@ -149,6 +178,8 @@ main() {
     eval-one) cmd_eval_one "$@" ;;
     eval-all) cmd_eval_all "$@" ;;
     benchmark) cmd_benchmark "$@" ;;
+    benchmark-seeds) cmd_benchmark_seeds "$@" ;;
+    aggregate-seeds) cmd_aggregate_seeds "$@" ;;
     export) cmd_export "$@" ;;
     -h|--help|help|"") usage ;;
     *)

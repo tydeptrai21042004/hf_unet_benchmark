@@ -10,7 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts import benchmark_all, make_splits, prepare_kvasir_seg
-from src.datasets import get_dataset_spec, infer_kvasir_paths, normalize_dataset_name
+from src.datasets import get_dataset_spec, infer_dataset_paths, infer_kvasir_paths, normalize_dataset_name
 from src.utils import resolve_device, should_pin_memory
 
 
@@ -30,6 +30,9 @@ def test_resolve_device_auto_falls_back_to_cpu_when_cuda_missing():
 def test_normalize_dataset_name_accepts_aliases():
     assert normalize_dataset_name("kvasir") == "kvasir_seg"
     assert normalize_dataset_name("kvasir-seg") == "kvasir_seg"
+    assert normalize_dataset_name("clinicdb") == "cvc_clinicdb"
+    assert normalize_dataset_name("etis-laribpolypdb") == "etis"
+    assert normalize_dataset_name("cvc300") == "cvc_300"
     assert normalize_dataset_name("custom") == "custom"
 
 
@@ -61,8 +64,10 @@ def test_infer_kvasir_paths_falls_back_to_any_processed_pair(tmp_path: Path):
 
 def test_make_splits_resolve_image_dir_prefers_requested_size(tmp_path: Path):
     (tmp_path / "processed" / "images_320").mkdir(parents=True)
+    (tmp_path / "processed" / "masks_320").mkdir(parents=True)
     (tmp_path / "processed" / "images_352").mkdir(parents=True)
-    resolved = make_splits._resolve_image_dir(tmp_path, image_size=352)
+    (tmp_path / "processed" / "masks_352").mkdir(parents=True)
+    resolved = make_splits._resolve_image_dir(tmp_path, dataset_name="kvasir_seg", image_size=352)
     assert resolved.name == "images_352"
 
 
@@ -101,3 +106,12 @@ def test_benchmark_prepared_dataset_and_split_helpers(tmp_path: Path):
     for name in ("train", "val", "test"):
         (splits / f"{name}.txt").write_text("a\n", encoding="utf-8")
     assert benchmark_all.split_files_exist(tmp_path) is True
+
+
+def test_infer_dataset_paths_handles_named_raw_dataset(tmp_path: Path):
+    (tmp_path / "raw" / "CVC-ClinicDB" / "images").mkdir(parents=True)
+    (tmp_path / "raw" / "CVC-ClinicDB" / "masks").mkdir(parents=True)
+    paths = infer_dataset_paths(tmp_path, dataset_name="cvc_clinicdb")
+    assert paths.image_dir.name == "images"
+    assert paths.mask_dir.name == "masks"
+    assert paths.image_dir.parent.name == "CVC-ClinicDB"
