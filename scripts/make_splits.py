@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.datasets import normalize_dataset_name
+from src.datasets import infer_dataset_paths, normalize_dataset_name
 
 VALID_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
@@ -22,28 +22,9 @@ def _is_image(path: Path) -> bool:
     return path.suffix.lower() in VALID_EXTS
 
 
-def _resolve_image_dir(data_root: Path, image_size: Optional[int] = None) -> Path:
-    candidates = []
-    if image_size is not None:
-        candidates.append(data_root / "processed" / f"images_{image_size}")
-    candidates.extend(
-        [
-            data_root / "processed" / "images",
-            data_root / "raw" / "Kvasir-SEG" / "images",
-            data_root / "Kvasir-SEG" / "images",
-            data_root / "images",
-        ]
-    )
-    for path in candidates:
-        if path.is_dir():
-            return path
-
-    processed_root = data_root / "processed"
-    if processed_root.is_dir():
-        dynamic = sorted(p for p in processed_root.iterdir() if p.is_dir() and p.name.startswith("images_"))
-        if dynamic:
-            return dynamic[0]
-    raise FileNotFoundError(f"Could not find image directory under: {data_root}")
+def _resolve_image_dir(data_root: Path, dataset_name: str, image_size: Optional[int] = None) -> Path:
+    inferred = infer_dataset_paths(data_root, dataset_name=dataset_name, image_size=image_size)
+    return inferred.image_dir
 
 
 def _collect_ids(image_dir: Path) -> List[str]:
@@ -75,7 +56,7 @@ def _write_list(items: Sequence[str], path: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create deterministic train/val/test split text files.")
-    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Currently supports kvasir_seg and custom.")
+    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Supports Kvasir-SEG, CVC-ClinicDB, ETIS, CVC-ColonDB, CVC-300, and custom.")
     parser.add_argument("--data-root", type=str, default="data", help="Benchmark data root.")
     parser.add_argument("--image-size", type=int, default=None, help="Preferred processed image size, e.g. 352.")
     parser.add_argument("--train-ratio", type=float, default=0.8)
@@ -87,12 +68,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    normalize_dataset_name(args.dataset)  # validate early
+    dataset_name = normalize_dataset_name(args.dataset)
     if args.train_ratio <= 0 or args.val_ratio < 0 or (args.train_ratio + args.val_ratio) >= 1:
         raise ValueError("Require 0 < train_ratio, 0 <= val_ratio, and train_ratio + val_ratio < 1")
 
     data_root = Path(args.data_root)
-    image_dir = _resolve_image_dir(data_root, image_size=args.image_size)
+    image_dir = _resolve_image_dir(data_root, dataset_name=dataset_name, image_size=args.image_size)
     ids = _collect_ids(image_dir)
     if len(ids) < 3:
         raise RuntimeError(f"Need at least 3 samples to create train/val/test splits, found {len(ids)}")
@@ -104,7 +85,7 @@ def main() -> None:
     _write_list(test_ids, output_dir / "test.txt")
 
     print(f"Saved splits to: {output_dir}")
-    print(f"dataset={normalize_dataset_name(args.dataset)}")
+    print(f"dataset={dataset_name}")
     print(f"train={len(train_ids)} val={len(val_ids)} test={len(test_ids)} total={len(ids)}")
 
 

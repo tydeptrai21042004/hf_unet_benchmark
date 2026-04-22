@@ -9,7 +9,21 @@ import json
 from pathlib import Path
 from typing import Dict, List
 
-DEFAULT_COLUMNS = ["model", "split", "dice", "iou", "precision", "recall", "mae", "loss", "num_samples", "checkpoint"]
+DEFAULT_COLUMNS = [
+    "model",
+    "dataset",
+    "split",
+    "seed",
+    "dice",
+    "iou",
+    "precision",
+    "recall",
+    "mae",
+    "loss",
+    "num_samples",
+    "checkpoint",
+]
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,11 +34,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+
 def find_metric_files(base: Path) -> List[Path]:
     files = sorted(base.rglob("*_metrics.json"))
     if files:
         return files
     return sorted(base.rglob("metrics_*.json"))
+
 
 
 def load_rows(files: List[Path]) -> List[Dict[str, object]]:
@@ -35,13 +51,16 @@ def load_rows(files: List[Path]) -> List[Dict[str, object]]:
         metrics = payload.get("metrics", {})
         row = {
             "model": payload.get("model", path.stem.replace("_metrics", "")),
+            "dataset": payload.get("dataset", ""),
             "split": payload.get("split", "test"),
+            "seed": payload.get("seed", ""),
             "checkpoint": payload.get("checkpoint", ""),
             "num_samples": payload.get("num_samples", ""),
         }
         row.update(metrics)
         rows.append(row)
     return rows
+
 
 
 def save_csv(rows: List[Dict[str, object]], path: Path) -> None:
@@ -53,17 +72,30 @@ def save_csv(rows: List[Dict[str, object]], path: Path) -> None:
             writer.writerow({k: row.get(k, "") for k in DEFAULT_COLUMNS})
 
 
+
 def fmt(val) -> str:
     if isinstance(val, float):
         return f"{val:.4f}"
     return str(val)
 
 
+
 def save_latex(rows: List[Dict[str, object]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    headers = ["Model", "Split", "Dice$\\uparrow$", "IoU$\\uparrow$", "Precision$\\uparrow$", "Recall$\\uparrow$", "MAE$\\downarrow$", "Loss"]
+    headers = [
+        "Model",
+        "Dataset",
+        "Split",
+        "Seed",
+        "Dice$\\uparrow$",
+        "IoU$\\uparrow$",
+        "Precision$\\uparrow$",
+        "Recall$\\uparrow$",
+        "MAE$\\downarrow$",
+        "Loss",
+    ]
     with path.open("w", encoding="utf-8") as f:
-        f.write("\\begin{tabular}{l l c c c c c c}\n")
+        f.write("\\begin{tabular}{l l l l c c c c c c}\n")
         f.write("\\toprule\n")
         f.write(" {} \\\n".format(" & ".join(headers)))
         f.write("\\midrule\n")
@@ -71,7 +103,9 @@ def save_latex(rows: List[Dict[str, object]], path: Path) -> None:
             line = " & ".join(
                 [
                     fmt(row.get("model", "")),
+                    fmt(row.get("dataset", "")),
                     fmt(row.get("split", "")),
+                    fmt(row.get("seed", "")),
                     fmt(row.get("dice", "")),
                     fmt(row.get("iou", "")),
                     fmt(row.get("precision", "")),
@@ -85,6 +119,7 @@ def save_latex(rows: List[Dict[str, object]], path: Path) -> None:
         f.write("\\end{tabular}\n")
 
 
+
 def main() -> None:
     args = parse_args()
     output_root = Path(args.output_root)
@@ -92,7 +127,7 @@ def main() -> None:
     files = find_metric_files(input_dir)
     if not files:
         raise FileNotFoundError(f"No metric JSON files found under: {input_dir}")
-    rows = sorted(load_rows(files), key=lambda x: (str(x.get("split", "")), str(x.get("model", ""))))
+    rows = sorted(load_rows(files), key=lambda x: (str(x.get("dataset", "")), str(x.get("split", "")), str(x.get("model", ""))))
     save_csv(rows, output_root / "results" / "tables" / f"{args.save_name}.csv")
     save_latex(rows, output_root / "results" / "tables" / f"{args.save_name}.tex")
     print(f"Exported {len(rows)} rows to {output_root / 'results' / 'tables'}")

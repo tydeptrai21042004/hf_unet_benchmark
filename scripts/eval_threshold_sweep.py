@@ -30,7 +30,7 @@ from src.utils import ExperimentPaths, get_logger, load_yaml, resolve_device, sh
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Tune threshold on val and evaluate on test.")
     parser.add_argument("--model", type=str, required=True)
-    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Currently supports kvasir_seg and custom.")
+    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Supports Kvasir-SEG, CVC-ClinicDB, ETIS, CVC-ColonDB, CVC-300, and custom.")
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--data-root", type=str, default=None)

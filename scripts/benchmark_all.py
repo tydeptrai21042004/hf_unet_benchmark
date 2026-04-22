@@ -21,7 +21,7 @@ DEFAULT_MODELS = "unet,unet_cbam,unetpp,pranet,acsnet,hardnet_mseg,polyp_pvt,car
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run data prep, split generation, training, evaluation, and export.")
     parser.add_argument("--models", type=str, default=DEFAULT_MODELS, help="Comma-separated model names for train_all/eval_all")
-    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Auto-download is available for kvasir_seg.")
+    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Kvasir-SEG has a default download URL; the other supported polyp datasets can be prepared from source-dir/zip-path or a custom download URL.")
     parser.add_argument("--config-dir", type=str, default="configs")
     parser.add_argument("--data-root", type=str, default="data")
     parser.add_argument("--source-dir", type=str, default=None)
@@ -63,7 +63,7 @@ def build_prepare_cmd(args: argparse.Namespace, py: str) -> list[str]:
     spec = get_dataset_spec(dataset_name)
     cmd = [
         py,
-        str(PROJECT_ROOT / "scripts" / "prepare_kvasir_seg.py"),
+        str(PROJECT_ROOT / "scripts" / "prepare_dataset.py"),
         "--dataset",
         dataset_name,
         "--data-root",
@@ -151,7 +151,7 @@ def main() -> None:
         "--device",
         device,
     ]
-    for flag in [("--batch-size", args.batch_size), ("--output-root", args.output_root), ("--num-workers", args.num_workers)]:
+    for flag in [("--batch-size", args.batch_size), ("--output-root", args.output_root), ("--num-workers", args.num_workers), ("--seed", args.seed)]:
         if flag[1] is not None:
             eval_cmd += [flag[0], str(flag[1])]
     if args.save_predictions:

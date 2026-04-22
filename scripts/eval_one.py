@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.datasets import build_eval_transforms, KvasirSegDataset, normalize_dataset_name
+from src.datasets import build_dataset, build_eval_transforms, normalize_dataset_name
 from src.engine import Evaluator, Inferencer
 from src.losses import BCEDiceLoss, DiceLoss, StructureLoss
 from src.models import build_model
@@ -26,7 +26,7 @@ from src.utils import ExperimentPaths, dump_yaml, get_logger, load_yaml, resolve
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate one checkpoint.")
     parser.add_argument("--model", type=str, required=True)
-    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Currently supports kvasir_seg and custom.")
+    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Supports Kvasir-SEG, CVC-ClinicDB, ETIS, CVC-ColonDB, CVC-300, and custom.")
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--checkpoint", type=str, default=None, help="Path to checkpoint. Defaults to <output-root>/<model>/checkpoints/best.pt")
     parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
@@ -38,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=None)
     parser.add_argument("--save-predictions", action="store_true")
     parser.add_argument("--save-visualizations", action="store_true")
+    parser.add_argument("--seed", type=int, default=None, help="Optional metadata seed for repeated runs.")
     return parser.parse_args()
 
 
@@ -124,10 +125,9 @@ def main() -> None:
     data_cfg = cfg["data"]
     image_size = int(data_cfg.get("image_size", 352))
     dataset_name = normalize_dataset_name(data_cfg.get("dataset", "kvasir_seg"))
-    if dataset_name not in {"kvasir_seg", "custom"}:
-        raise ValueError(f"Unsupported dataset for evaluation: {dataset_name}")
 
-    dataset = KvasirSegDataset(
+    dataset = build_dataset(
+        name=dataset_name,
         root=data_cfg.get("root", "data"),
         split=args.split,
         image_size=image_size,
@@ -173,6 +173,7 @@ def main() -> None:
         "checkpoint": str(checkpoint_path),
         "metrics": metrics,
         "num_samples": len(dataset),
+        "seed": args.seed,
     }
 
     save_json(payload, exp_paths.results / f"metrics_{args.split}.json")

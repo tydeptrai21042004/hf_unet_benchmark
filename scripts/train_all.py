@@ -28,7 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train all or selected models sequentially.")
     parser.add_argument("--models", type=str, default=",".join(DEFAULT_MODELS), help="Comma-separated model names")
-    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Currently supports kvasir_seg and custom.")
+    parser.add_argument("--dataset", type=str, default="kvasir_seg", help="Dataset key. Supports Kvasir-SEG, CVC-ClinicDB, ETIS, CVC-ColonDB, CVC-300, and custom.")
     parser.add_argument("--config-dir", type=str, default="configs", help="Directory containing <model>.yaml configs")
     parser.add_argument("--data-root", type=str, default=None)
     parser.add_argument("--image-size", type=int, default=None)
