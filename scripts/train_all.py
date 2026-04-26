@@ -19,6 +19,7 @@ DEFAULT_MODELS = [
     "caranet",
     "cfanet",
     "hsnet",
+    "csca_unet",
     "proposal_hf_unet",
 ]
 
