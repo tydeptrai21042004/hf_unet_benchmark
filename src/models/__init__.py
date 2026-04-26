@@ -4,6 +4,7 @@ from .builder import build_model
 from .baselines.acsnet import ACSNet, ACSNetLite
 from .baselines.caranet import CaraNet, CaraNetLite
 from .baselines.cfanet import CFANet, CFANetLite
+from .baselines.csca_unet import CSCAUNet, CSCAUNetLite
 from .baselines.hardnet_mseg import HarDNetMSEG, HarDNetMSEGLite
 from .baselines.hsnet import HSNet, HSNetLite
 from .baselines.polyp_pvt import PolypPVT, PolypPVTLite
@@ -32,5 +33,7 @@ __all__ = [
     "CaraNetLite",
     "CFANet",
     "CFANetLite",
+    "CSCAUNet",
+    "CSCAUNetLite",
     "HFUNet",
 ]
