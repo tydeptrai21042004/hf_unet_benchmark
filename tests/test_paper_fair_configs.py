@@ -10,7 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 PAPER_FAIR_DIR = PROJECT_ROOT / "configs" / "paper_fair"
-MODELS = ["unet", "unet_cbam", "unetpp", "pranet", "acsnet", "hardnet_mseg", "polyp_pvt", "caranet", "cfanet", "hsnet", "proposal_hf_unet"]
+MODELS = ["unet", "unet_cbam", "unetpp", "pranet", "acsnet", "hardnet_mseg", "polyp_pvt", "caranet", "cfanet", "hsnet", "csca_unet", "proposal_hf_unet"]
 
 
 def load_cfg(name: str):
