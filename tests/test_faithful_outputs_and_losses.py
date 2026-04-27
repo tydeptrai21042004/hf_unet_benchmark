@@ -24,6 +24,7 @@ EXPECTED_AUX = {
     "caranet": 3,
     "cfanet": 4,
     "hsnet": 4,
+    "csca_unet": 5,
 }
 
 
@@ -32,10 +33,20 @@ def load_cfg(name: str):
         return yaml.safe_load(f)
 
 
+def fast_test_cfg(name: str, cfg: dict):
+    cfg = dict(cfg)
+    model_cfg = dict(cfg["model"])
+    if name == "csca_unet":
+        model_cfg["channels"] = [2, 4, 8, 16, 32, 64]
+        model_cfg["attention_mode"] = "efficient"
+    cfg["model"] = model_cfg
+    return cfg
+
+
 def test_faithful_configs_build_and_expose_expected_output_contracts():
     x = torch.randn(1, 3, 64, 64)
     for model_name, expected_aux in EXPECTED_AUX.items():
-        cfg = load_cfg(model_name)
+        cfg = fast_test_cfg(model_name, load_cfg(model_name))
         model = build_model(model_name, cfg["model"])
         model.eval()
         with torch.no_grad():
