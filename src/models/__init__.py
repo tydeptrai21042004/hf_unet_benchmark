@@ -9,6 +9,7 @@ from .baselines.hardnet_mseg import HarDNetMSEG, HarDNetMSEGLite
 from .baselines.hsnet import HSNet, HSNetLite
 from .baselines.polyp_pvt import PolypPVT, PolypPVTLite
 from .baselines.pranet import PraNet, PraNetLite
+from .baselines.resunetpp import ResUNetPlusPlus, ResUNetPPAttentionGate, ResUNetPPDecoderBlock
 from .baselines.unet import UNet
 from .baselines.unet_cbam import UNetCBAM
 from .baselines.unetpp import UNetPlusPlus
@@ -19,6 +20,9 @@ __all__ = [
     "UNet",
     "UNetCBAM",
     "UNetPlusPlus",
+    "ResUNetPlusPlus",
+    "ResUNetPPAttentionGate",
+    "ResUNetPPDecoderBlock",
     "PraNet",
     "PraNetLite",
     "ACSNet",
