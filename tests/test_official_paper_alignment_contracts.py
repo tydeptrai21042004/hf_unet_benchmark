@@ -19,6 +19,8 @@ from src.models.baselines.csca_unet import (
     CSCASpatialAttention,
     DoubleSqueezeExcitation,
 )
+from src.models.baselines.resunetpp import ResUNetPPAttentionGate, ResUNetPPDecoderBlock
+from src.models.common.blocks import ASPP, ResidualBlock, SqueezeExcitation
 from src.models.common.official_backbones import (
     OfficialHarDNetEncoder,
     OfficialPVTv2Backbone,
@@ -85,6 +87,8 @@ PAPER_MODULE_CONTRACTS: dict[str, tuple[type, ...]] = {
     ),
     # CSCA U-Net: residual basic blocks + DSE bottleneck/attention + CSCA decoder attention + deep supervision.
     "csca_unet": (CSCABasicBlock, DoubleSqueezeExcitation, CSCASpatialAttention, CSCADecoderBlock),
+    # ResUNet++: residual units + SE + ASPP bridge + attention-gated decoder.
+    "resunetpp": (ResidualBlock, SqueezeExcitation, ASPP, ResUNetPPAttentionGate, ResUNetPPDecoderBlock),
     # Proposed method: HF bottleneck must exist as the named architectural contribution.
     "proposal_hf_unet": (HFBottleneck,),
 }

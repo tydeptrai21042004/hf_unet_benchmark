@@ -18,6 +18,7 @@ BENCHMARK_MODELS = [
     "unet",
     "unet_cbam",
     "unetpp",
+    "resunetpp",
     "pranet",
     "acsnet",
     "hardnet_mseg",

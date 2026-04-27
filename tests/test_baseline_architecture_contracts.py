@@ -13,6 +13,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.models import build_model
 from src.models.baselines.csca_unet import CSCABasicBlock, CSCADecoderBlock, CSCASpatialAttention, DoubleSqueezeExcitation
+from src.models.baselines.resunetpp import ResUNetPPAttentionGate, ResUNetPPDecoderBlock
+from src.models.common.blocks import ASPP, ResidualBlock, SqueezeExcitation
 from src.models.common.official_backbones import OfficialHarDNetEncoder, OfficialPVTv2Backbone, OfficialRes2NetEncoder
 from src.models.common.paper_baselines import (
     AdaptiveSelectionModule,
@@ -56,12 +58,14 @@ MODEL_MODULE_CONTRACTS = {
     "polyp_pvt": (CascadedFusionModule, CamouflageIdentificationModule, SimilarityAggregationModule, OfficialPVTv2Backbone),
     "hsnet": (CrossSemanticAttention, HybridSemanticComplementaryModule, MultiScalePredictionModule, OfficialRes2NetEncoder, OfficialPVTv2Backbone),
     "csca_unet": (CSCABasicBlock, DoubleSqueezeExcitation, CSCASpatialAttention, CSCADecoderBlock),
+    "resunetpp": (ResidualBlock, SqueezeExcitation, ASPP, ResUNetPPAttentionGate, ResUNetPPDecoderBlock),
 }
 
 
 @pytest.mark.parametrize("model_name", [
     "unet",
     "unetpp",
+    "resunetpp",
     "unet_cbam",
     "pranet",
     "acsnet",
