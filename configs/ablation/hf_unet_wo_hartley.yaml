@@ -1,0 +1,58 @@
+experiment:
+  output_root: outputs_ablation
+  name: hf_unet_wo_hartley
+
+data:
+  root: data
+  image_size: 352
+  batch_size: 6
+  num_workers: 4
+  pin_memory: true
+  augmentation: baseline
+
+train:
+  epochs: 30
+  lr: 0.001
+  weight_decay: 0.0001
+  optimizer: adamw
+  scheduler: cosine
+  t_max: 30
+  eta_min: 1.0e-06
+  mixed_precision: true
+  grad_clip: null
+  seed: 42
+  loss: bce_dice
+  threshold: 0.5
+  aux_loss_weight: 0.1
+  aux_warmup_epochs: 10
+  aux_ramp_epochs: 20
+  save_metric: dice
+  save_metric_mode: max
+
+eval:
+  loss: bce_dice
+  threshold: 0.5
+  device: null
+  include_aux_loss: false
+
+model:
+  name: hf_unet_wo_hartley
+  in_channels: 3
+  num_classes: 1
+  channels: [32, 64, 128, 256, 512]
+  hf_alpha: 0.5
+  hf_alpha_start: 0.0
+  hf_alpha_warmup_epochs: 10
+  hf_expansion: 1.5
+  hf_dropout: 0.0
+  use_hf_regularizer: true
+  norm: bn
+  act: relu
+  hf_block_norm: gn
+  hf_block_act: gelu
+  mixer_act: identity
+  use_se: false
+  use_gate: true
+  gate_init_bias: -2.0
+  decoder_use_cbam: false
+  identity_init: true
