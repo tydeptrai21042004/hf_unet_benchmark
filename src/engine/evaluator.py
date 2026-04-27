@@ -22,7 +22,6 @@ class Evaluator:
         aux_weights: float | Sequence[float] | None = None,
         boundary_loss_fn: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
         boundary_weight: float = 0.0,
-        include_aux_loss: bool = False,
     ) -> None:
         self.device = torch.device(device)
         self.threshold = threshold
@@ -32,7 +31,6 @@ class Evaluator:
         self.aux_weights = aux_weights
         self.boundary_loss_fn = boundary_loss_fn
         self.boundary_weight = float(boundary_weight)
-        self.include_aux_loss = bool(include_aux_loss)
 
     @torch.no_grad()
     def evaluate(
@@ -59,8 +57,8 @@ class Evaluator:
                     model_output,
                     masks,
                     main_loss_fn=effective_loss_fn,
-                    aux_loss_fn=self.aux_loss_fn if self.include_aux_loss else None,
-                    aux_weights=self.aux_weights if self.include_aux_loss else None,
+                    aux_loss_fn=self.aux_loss_fn,
+                    aux_weights=self.aux_weights,
                     boundary_loss_fn=self.boundary_loss_fn,
                     boundary_weight=self.boundary_weight,
                 )
