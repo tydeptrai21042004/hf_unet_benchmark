@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Callable, Dict, Optional
 
 import torch
 from torch.utils.data import DataLoader
 
 from ..engine.evaluator import Evaluator
-from ..engine.output_utils import compute_supervised_loss
+from ..engine.output_utils import compute_supervised_loss, parse_model_output
 from ..utils.logger import AverageMeter
 
 
@@ -31,6 +32,9 @@ class Trainer:
         log_interval: int = 20,
         threshold: float = 0.5,
         logger=None,
+        debug_logits: bool = False,
+        debug_logits_interval: int = 1,
+        include_aux_loss_in_eval: bool = False,
     ) -> None:
         self.device = torch.device(device)
         self.model = model.to(self.device)
@@ -48,6 +52,17 @@ class Trainer:
         self.log_interval = log_interval
         self.threshold = threshold
         self.logger = logger
+        self.debug_logits = bool(debug_logits)
+        self.debug_logits_interval = max(int(debug_logits_interval), 1)
+
+        # Best-checkpoint state.  These are updated inside fit() as soon as a
+        # monitored validation metric improves.  This prevents the common bug of
+        # reporting best_epoch while saving the final epoch weights as best.pt.
+        self.best_state_dict: dict[str, torch.Tensor] | None = None
+        self.best_optimizer_state: dict | None = None
+        self.best_record: Dict[str, float] | None = None
+        self.best_epoch: int | None = None
+        self.best_score: float | None = None
 
         use_amp = mixed_precision and self.device.type == "cuda"
         self.mixed_precision = use_amp
@@ -61,6 +76,7 @@ class Trainer:
             aux_weights=self.aux_weights,
             boundary_loss_fn=self.boundary_loss_fn,
             boundary_weight=self.boundary_weight,
+            include_aux_loss=include_aux_loss_in_eval,
         )
 
     def _log(self, message: str) -> None:
@@ -100,6 +116,54 @@ class Trainer:
 
         return total_loss, log_items
 
+    @staticmethod
+    def _state_dict_to_cpu(module: torch.nn.Module) -> dict[str, torch.Tensor]:
+        return {k: v.detach().cpu().clone() for k, v in module.state_dict().items()}
+
+    def _capture_best(self, *, epoch: int, record: Dict[str, float], score: float) -> None:
+        self.best_score = float(score)
+        self.best_epoch = int(epoch)
+        self.best_record = dict(record)
+        self.best_state_dict = self._state_dict_to_cpu(self.model)
+        # deepcopy is important because optimizer.state_dict() contains mutable
+        # tensors/lists that will keep changing after this epoch.
+        self.best_optimizer_state = deepcopy(self.optimizer.state_dict())
+
+    def _is_better(self, score: float, mode: str) -> bool:
+        if self.best_score is None:
+            return True
+        if mode == "min":
+            return score < self.best_score
+        return score > self.best_score
+
+    def _maybe_log_tensor_sanity(self, model_output, masks: torch.Tensor, *, epoch: int, step: int) -> None:
+        if not self.debug_logits:
+            return
+        if step != 1 and step % self.debug_logits_interval != 0:
+            return
+        try:
+            parsed = parse_model_output(model_output)
+            logits = parsed.main.detach()
+            message = (
+                f"tensor_sanity epoch={epoch} step={step} "
+                f"logits[min={logits.min().item():.4f}, max={logits.max().item():.4f}, "
+                f"mean={logits.mean().item():.4f}, std={logits.std().item():.4f}] "
+                f"mask[min={masks.min().item():.4f}, max={masks.max().item():.4f}, "
+                f"mean={masks.mean().item():.4f}]"
+            )
+            if parsed.aux:
+                aux_ranges = []
+                for idx, aux in enumerate(parsed.aux):
+                    aux_detached = aux.detach()
+                    aux_ranges.append(
+                        f"aux{idx + 1}[min={aux_detached.min().item():.4f}, "
+                        f"max={aux_detached.max().item():.4f}]"
+                    )
+                message += " " + " ".join(aux_ranges)
+            self._log(message)
+        except Exception as exc:  # pragma: no cover - debug aid only
+            self._log(f"tensor_sanity logging failed: {exc}")
+
     def train_one_epoch(self, dataloader: DataLoader, epoch: int) -> Dict[str, float]:
         self.model.train()
         if hasattr(self.model, "set_epoch"):
@@ -120,12 +184,19 @@ class Trainer:
             self.optimizer.zero_grad(set_to_none=True)
             with torch.amp.autocast(device_type=self.device.type, enabled=self.mixed_precision):
                 model_output = self.model(images)
+                self._maybe_log_tensor_sanity(model_output, masks, epoch=epoch, step=step)
                 total_loss, log_items = self._compute_total_loss(model_output, masks, epoch=epoch)
+
+            if not torch.isfinite(total_loss):
+                self._maybe_log_tensor_sanity(model_output, masks, epoch=epoch, step=step)
+                raise FloatingPointError(
+                    f"Non-finite training loss at epoch={epoch}, step={step}: {float(total_loss.detach().cpu())}"
+                )
 
             self.scaler.scale(total_loss).backward()
             self.scaler.unscale_(self.optimizer)
             if self.grad_clip is not None:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), float(self.grad_clip))
             self.scaler.step(self.optimizer)
             self.scaler.update()
 
@@ -177,7 +248,14 @@ class Trainer:
         *,
         epochs: int,
         metric_for_plateau: str = "loss",
+        monitor: str = "dice",
+        monitor_mode: str = "max",
     ) -> list[Dict[str, float]]:
+        monitor = str(monitor).strip()
+        monitor_mode = str(monitor_mode).lower().strip()
+        if monitor_mode not in {"min", "max"}:
+            raise ValueError("monitor_mode must be either 'min' or 'max'.")
+
         history: list[Dict[str, float]] = []
         for epoch in range(1, epochs + 1):
             train_metrics = self.train_one_epoch(train_loader, epoch)
@@ -190,12 +268,32 @@ class Trainer:
                     f"epoch={epoch} train_loss={train_metrics['loss']:.4f} "
                     f"val_loss={val_metrics.get('loss', 0.0):.4f} val_dice={val_metrics.get('dice', 0.0):.4f}"
                 )
+                monitor_value = val_metrics.get(monitor)
+                if monitor_value is None:
+                    # Allow monitor='val/dice' or fallback to loss if a custom key
+                    # is unavailable.
+                    monitor_value = record.get(monitor, val_metrics.get("loss", train_metrics["loss"]))
+                score = float(monitor_value)
+                if torch.isfinite(torch.tensor(score)) and self._is_better(score, monitor_mode):
+                    self._capture_best(epoch=epoch, record=record, score=score)
+                    self._log(f"new_best epoch={epoch} {monitor}={score:.6f}")
+
                 if self.scheduler is not None and isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                     self.scheduler.step(val_metrics.get(metric_for_plateau, val_metrics.get("loss", 0.0)))
             else:
                 self._log(f"epoch={epoch} train_loss={train_metrics['loss']:.4f}")
+                monitor_value = record.get(f"train/{monitor}", record.get(monitor, train_metrics["loss"]))
+                score = float(monitor_value)
+                if torch.isfinite(torch.tensor(score)) and self._is_better(score, monitor_mode):
+                    self._capture_best(epoch=epoch, record=record, score=score)
 
             history.append(record)
+
+        # Safety fallback: even if the monitored metric was missing or NaN for all
+        # epochs, still save a valid checkpoint state rather than the caller having
+        # to guess what happened.
+        if self.best_state_dict is None and history:
+            self._capture_best(epoch=len(history), record=history[-1], score=float("nan"))
         return history
 
 
