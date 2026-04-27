@@ -12,6 +12,7 @@ DEFAULT_MODELS = [
     "unet",
     "unet_cbam",
     "unetpp",
+    "resunetpp",
     "pranet",
     "acsnet",
     "hardnet_mseg",
@@ -19,6 +20,7 @@ DEFAULT_MODELS = [
     "caranet",
     "cfanet",
     "hsnet",
+    "csca_unet",
     "proposal_hf_unet",
 ]
 

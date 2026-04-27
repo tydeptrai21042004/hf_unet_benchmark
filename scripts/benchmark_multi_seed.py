@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MODELS = "unet,unet_cbam,unetpp,pranet,acsnet,hardnet_mseg,polyp_pvt,caranet,cfanet,hsnet,proposal_hf_unet"
+DEFAULT_MODELS = "unet,unet_cbam,unetpp,resunetpp,pranet,acsnet,hardnet_mseg,polyp_pvt,caranet,cfanet,hsnet,proposal_hf_unet"
 
 
 

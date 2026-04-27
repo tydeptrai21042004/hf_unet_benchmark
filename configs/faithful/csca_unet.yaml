@@ -1,0 +1,56 @@
+data:
+  augmentation: strong
+  batch_size: 4
+  image_size: 352
+  num_workers: 4
+  pin_memory: true
+  root: data
+eval:
+  device: null
+  loss: structure
+  threshold: 0.5
+experiment:
+  output_root: outputs_faithful
+  name: csca_unet
+train:
+  aux_loss_weight: 0.0
+  aux_ramp_epochs: 0
+  aux_warmup_epochs: 0
+  aux_loss: structure
+  aux_output_weights:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  epochs: 30
+  eta_min: 1.0e-06
+  grad_clip: 1.0
+  loss: structure
+  lr: 0.0001
+  mixed_precision: false
+  deterministic: true
+  deterministic_warn_only: true
+  optimizer: adamw
+  save_metric: dice
+  save_metric_mode: max
+  scheduler: cosine
+  seed: 42
+  t_max: 30
+  threshold: 0.5
+  weight_decay: 0.0001
+model:
+  name: csca_unet
+  in_channels: 3
+  num_classes: 1
+  channels:
+  - 32
+  - 64
+  - 128
+  - 256
+  - 512
+  - 1024
+  decay: 2
+  deep_supervision: true
+  faithful_output: true
+  attention_mode: efficient
