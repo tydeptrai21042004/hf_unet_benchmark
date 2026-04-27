@@ -22,6 +22,7 @@ class Evaluator:
         aux_weights: float | Sequence[float] | None = None,
         boundary_loss_fn: Optional[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
         boundary_weight: float = 0.0,
+        include_aux_loss: bool = False,
     ) -> None:
         self.device = torch.device(device)
         self.threshold = threshold
@@ -31,6 +32,7 @@ class Evaluator:
         self.aux_weights = aux_weights
         self.boundary_loss_fn = boundary_loss_fn
         self.boundary_weight = float(boundary_weight)
+        self.include_aux_loss = bool(include_aux_loss)
 
     @torch.no_grad()
     def evaluate(
@@ -43,7 +45,7 @@ class Evaluator:
         model.eval()
         totals = defaultdict(float)
         steps = 0
-        pixels = 0
+        samples = 0
         effective_loss_fn = loss_fn or self.loss_fn
 
         for batch in dataloader:
@@ -53,15 +55,18 @@ class Evaluator:
             parsed = parse_model_output(model_output)
 
             if effective_loss_fn is not None:
-                total_loss, _, _ = compute_supervised_loss(
-                    model_output,
-                    masks,
-                    main_loss_fn=effective_loss_fn,
-                    aux_loss_fn=self.aux_loss_fn,
-                    aux_weights=self.aux_weights,
-                    boundary_loss_fn=self.boundary_loss_fn,
-                    boundary_weight=self.boundary_weight,
-                )
+                if self.include_aux_loss:
+                    total_loss, _, _ = compute_supervised_loss(
+                        model_output,
+                        masks,
+                        main_loss_fn=effective_loss_fn,
+                        aux_loss_fn=self.aux_loss_fn,
+                        aux_weights=self.aux_weights,
+                        boundary_loss_fn=self.boundary_loss_fn,
+                        boundary_weight=self.boundary_weight,
+                    )
+                else:
+                    total_loss = effective_loss_fn(parsed.main, masks)
                 totals["loss"] += float(total_loss.item())
 
             batch_metrics = compute_segmentation_metrics(
@@ -71,7 +76,7 @@ class Evaluator:
                 threshold=self.threshold,
             )
             batch_size = images.shape[0]
-            pixels += batch_size
+            samples += batch_size
             for key, value in batch_metrics.items():
                 totals[key] += float(value) * batch_size
             steps += 1
@@ -79,7 +84,7 @@ class Evaluator:
         if steps == 0:
             return {"loss": 0.0, "dice": 0.0, "iou": 0.0, "precision": 0.0, "recall": 0.0, "mae": 0.0}
 
-        metrics = {key: value / max(pixels, 1) for key, value in totals.items() if key != "loss"}
+        metrics = {key: value / max(samples, 1) for key, value in totals.items() if key != "loss"}
         if "loss" in totals:
             metrics["loss"] = totals["loss"] / steps
         return metrics

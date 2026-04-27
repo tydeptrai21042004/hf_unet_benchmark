@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import math
+from copy import deepcopy
 from typing import Callable, Dict, Optional
 
 import torch
 from torch.utils.data import DataLoader
 
 from ..engine.evaluator import Evaluator
-from ..engine.output_utils import compute_supervised_loss
+from ..engine.output_utils import compute_supervised_loss, parse_model_output
 from ..utils.logger import AverageMeter
 
 
@@ -31,6 +33,9 @@ class Trainer:
         log_interval: int = 20,
         threshold: float = 0.5,
         logger=None,
+        debug_logits: bool = False,
+        debug_logits_interval: int = 1,
+        include_aux_loss_in_eval: bool = False,
     ) -> None:
         self.device = torch.device(device)
         self.model = model.to(self.device)
@@ -45,9 +50,16 @@ class Trainer:
         self.aux_loss_weight = float(aux_loss_weight)
         self.aux_warmup_epochs = int(aux_warmup_epochs)
         self.aux_ramp_epochs = int(aux_ramp_epochs)
-        self.log_interval = log_interval
-        self.threshold = threshold
+        self.log_interval = int(log_interval)
+        self.threshold = float(threshold)
         self.logger = logger
+        self.debug_logits = bool(debug_logits)
+        self.debug_logits_interval = max(int(debug_logits_interval), 1)
+
+        self.best_record: Optional[Dict[str, float]] = None
+        self.best_epoch: Optional[int] = None
+        self.best_state_dict: Optional[Dict[str, torch.Tensor]] = None
+        self.best_optimizer_state: Optional[dict] = None
 
         use_amp = mixed_precision and self.device.type == "cuda"
         self.mixed_precision = use_amp
@@ -61,6 +73,7 @@ class Trainer:
             aux_weights=self.aux_weights,
             boundary_loss_fn=self.boundary_loss_fn,
             boundary_weight=self.boundary_weight,
+            include_aux_loss=include_aux_loss_in_eval,
         )
 
     def _log(self, message: str) -> None:
@@ -122,6 +135,15 @@ class Trainer:
                 model_output = self.model(images)
                 total_loss, log_items = self._compute_total_loss(model_output, masks, epoch=epoch)
 
+            if self.debug_logits and (step % self.debug_logits_interval == 0):
+                parsed = parse_model_output(model_output)
+                self._log(
+                    "debug_logits "
+                    f"epoch={epoch} step={step} "
+                    f"logits=[{parsed.main.detach().min().item():.3f},{parsed.main.detach().max().item():.3f}] "
+                    f"masks=[{masks.detach().min().item():.3f},{masks.detach().max().item():.3f}]"
+                )
+
             self.scaler.scale(total_loss).backward()
             self.scaler.unscale_(self.optimizer)
             if self.grad_clip is not None:
@@ -152,7 +174,6 @@ class Trainer:
             try:
                 self.scheduler.step()
             except TypeError:
-                # ReduceLROnPlateau should be stepped externally after validation.
                 pass
 
         return {
@@ -170,6 +191,32 @@ class Trainer:
     def validate(self, dataloader: DataLoader) -> Dict[str, float]:
         return self.evaluator.evaluate(self.model, dataloader)
 
+    @staticmethod
+    def _record_metric_value(record: Dict[str, float], monitor: str) -> float:
+        key = f"val/{monitor}"
+        if key in record:
+            return float(record[key])
+        if monitor in record:
+            return float(record[monitor])
+        if "val/loss" in record:
+            return float(record["val/loss"])
+        return float(record.get("train/loss", math.nan))
+
+    def _is_better(self, value: float, best_value: Optional[float], mode: str) -> bool:
+        if not math.isfinite(value):
+            return False
+        if best_value is None or not math.isfinite(best_value):
+            return True
+        if mode.lower() == "min":
+            return value < best_value
+        return value > best_value
+
+    def _snapshot_best(self, record: Dict[str, float], epoch: int) -> None:
+        self.best_record = dict(record)
+        self.best_epoch = int(epoch)
+        self.best_state_dict = {k: v.detach().cpu().clone() for k, v in self.model.state_dict().items()}
+        self.best_optimizer_state = deepcopy(self.optimizer.state_dict())
+
     def fit(
         self,
         train_loader: DataLoader,
@@ -177,8 +224,11 @@ class Trainer:
         *,
         epochs: int,
         metric_for_plateau: str = "loss",
+        monitor: str = "dice",
+        monitor_mode: str = "max",
     ) -> list[Dict[str, float]]:
         history: list[Dict[str, float]] = []
+        best_value: Optional[float] = None
         for epoch in range(1, epochs + 1):
             train_metrics = self.train_one_epoch(train_loader, epoch)
             record: Dict[str, float] = {f"train/{k}": v for k, v in train_metrics.items()}
@@ -195,6 +245,10 @@ class Trainer:
             else:
                 self._log(f"epoch={epoch} train_loss={train_metrics['loss']:.4f}")
 
+            value = self._record_metric_value(record, monitor)
+            if self._is_better(value, best_value, monitor_mode):
+                best_value = value
+                self._snapshot_best(record, epoch)
             history.append(record)
         return history
 

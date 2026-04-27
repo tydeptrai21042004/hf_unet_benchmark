@@ -14,6 +14,16 @@ from .baselines.unet import UNet
 from .baselines.unet_cbam import UNetCBAM
 from .baselines.unetpp import UNetPlusPlus
 from .proposal.hf_unet import HFUNet
+from .proposal.hf_ablation import (
+    HFAblationUNet,
+    UNetConvBottleneck,
+    UNetFFTGFNetBottleneck,
+    HFUNetWithoutHartley,
+    HFUNetWithoutFourierKernel,
+    HFUNetWithoutResidual,
+    HFUNetEncoderStage4,
+    HFUNetDecoderStage,
+)
 
 __all__ = [
     "build_model",
@@ -40,4 +50,12 @@ __all__ = [
     "CSCAUNet",
     "CSCAUNetLite",
     "HFUNet",
+    "HFAblationUNet",
+    "UNetConvBottleneck",
+    "UNetFFTGFNetBottleneck",
+    "HFUNetWithoutHartley",
+    "HFUNetWithoutFourierKernel",
+    "HFUNetWithoutResidual",
+    "HFUNetEncoderStage4",
+    "HFUNetDecoderStage",
 ]
