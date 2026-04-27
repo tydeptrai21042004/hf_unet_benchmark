@@ -9,6 +9,8 @@ eval:
   device: null
   loss: structure
   threshold: 0.5
+  debug_logits: false
+  debug_logits_interval: 1
 experiment:
   output_root: outputs_faithful
   name: csca_unet
@@ -38,6 +40,8 @@ train:
   seed: 42
   t_max: 30
   threshold: 0.5
+  debug_logits: false
+  debug_logits_interval: 1
   weight_decay: 0.0001
 model:
   name: csca_unet
@@ -54,3 +58,4 @@ model:
   deep_supervision: true
   faithful_output: true
   attention_mode: efficient
+  logit_clip: 20.0
