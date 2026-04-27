@@ -84,3 +84,31 @@ For only CSCA U-Net:
 ```bash
 python -m pytest -q -k "csca"
 ```
+
+## 3. Behavior-level paper-contract tests
+
+Additional file:
+
+```text
+tests/test_baseline_paper_behavior_contracts.py
+```
+
+These tests check behavioral properties that are closer to the papers than a pure module-existence test:
+
+- reverse attention must depend on the coarse/previous prediction map;
+- ACSNet local context attention must emphasize uncertain regions;
+- ACSNet global context must return decoder-level context maps with matching sizes/channels;
+- CSCA U-Net faithful mode must expose five deep-supervision maps;
+- CSCA paper-style attention must run on a small square feature map;
+- HSNet multi-scale prediction weights must be normalized and trainable;
+- the common loss path must support auxiliary + boundary outputs together.
+
+## Added official-paper functional contract tests
+
+A stronger test file has been added:
+
+```bash
+python -m pytest -q tests/test_baseline_official_paper_functional_contracts.py
+```
+
+These tests verify functional paper contracts for PraNet, ACSNet, HarDNet-MSEG, Polyp-PVT, CaraNet, CFA-Net, HSNet, CSCA U-Net, and ResUNet++: required branches are instantiated, called in the forward pass, expose the expected auxiliary/boundary outputs, and receive gradients where applicable.
