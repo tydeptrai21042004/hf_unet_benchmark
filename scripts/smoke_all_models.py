@@ -25,7 +25,7 @@ from src.engine.output_utils import compute_supervised_loss, parse_model_output
 from src.losses import BCEDiceLoss, DiceLoss, StructureLoss
 from src.models import build_model
 
-DEFAULT_MODELS = "unet,unet_cbam,unetpp,pranet,acsnet,hardnet_mseg,polyp_pvt,caranet,cfanet,hsnet,csca_unet,proposal_hf_unet"
+DEFAULT_MODELS = "unet,unet_cbam,unetpp,resunetpp,pranet,acsnet,hardnet_mseg,polyp_pvt,caranet,cfanet,hsnet,csca_unet,proposal_hf_unet"
 
 
 def parse_args() -> argparse.Namespace:
