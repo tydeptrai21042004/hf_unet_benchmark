@@ -11,12 +11,7 @@ from ..registry import register_model
 
 
 class CSCABasicBlock(nn.Module):
-    """Residual two-convolution block used by CSCA U-Net.
-
-    This follows the public CSCA-U-Net implementation style: a 1x1 projection,
-    two 3x3 conv-BN-ReLU layers, and a residual connection from the projected
-    feature.
-    """
+    """Residual two-convolution block used by CSCA U-Net."""
 
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
@@ -40,11 +35,7 @@ class CSCABasicBlock(nn.Module):
 
 
 class DoubleSqueezeExcitation(nn.Module):
-    """Double squeeze-and-excitation block from CSCA U-Net.
-
-    The first gate uses global average pooling, and the second gate uses global
-    max pooling after the first reweighting.
-    """
+    """Double squeeze-and-excitation block from CSCA U-Net."""
 
     def __init__(self, channels: int, decay: int = 2) -> None:
         super().__init__()
@@ -72,15 +63,14 @@ class DoubleSqueezeExcitation(nn.Module):
 class CSCASpatialAttention(nn.Module):
     """Spatial part of the CSCA decoder attention.
 
-    ``attention_mode='paper'`` mirrors the public implementation, where the
-    attention tensor and value tensor are multiplied with ``torch.matmul`` over
-    the last two dimensions. This is the closest mode to the released code but
-    can be slow at 352x352.
+    ``attention_mode='paper'`` mirrors the public implementation style, where
+    the attention tensor and value tensor are multiplied with ``torch.matmul``
+    over the last two dimensions. This is closest to the released code but can
+    be slow at 352x352.
 
-    ``attention_mode='efficient'`` keeps the same Q/K/V branches but replaces the
-    large spatial matrix multiplication by element-wise gated fusion. This is
-    useful when you need a robust, easy-to-run baseline inside the unified
-    benchmark.
+    ``attention_mode='efficient'`` keeps the same Q/K/V branches but replaces
+    the large spatial matrix multiplication by element-wise gated fusion. This
+    is more robust for repeated benchmark runs.
     """
 
     def __init__(self, channels: int, decay: int = 2, attention_mode: Literal["paper", "efficient"] = "efficient") -> None:
@@ -174,6 +164,7 @@ class CSCAUNet(nn.Module):
         deep_supervision: bool = False,
         faithful_output: bool = False,
         attention_mode: Literal["paper", "efficient"] = "efficient",
+        logit_clip: float | None = None,
         **_: object,
     ) -> None:
         super().__init__()
@@ -182,6 +173,7 @@ class CSCAUNet(nn.Module):
         c1, c2, c3, c4, c5, c6 = channels
         self.deep_supervision = bool(deep_supervision)
         self.faithful_output = bool(faithful_output)
+        self.logit_clip = None if logit_clip is None else float(logit_clip)
         self.pool = nn.MaxPool2d(2)
 
         self.down_conv1 = CSCABasicBlock(in_channels, c1)
@@ -219,6 +211,14 @@ class CSCAUNet(nn.Module):
     def _resize_to_input(x: torch.Tensor, input_tensor: torch.Tensor) -> torch.Tensor:
         return F.interpolate(x, size=input_tensor.shape[-2:], mode="bilinear", align_corners=False)
 
+    def _stabilize_logits(self, x: torch.Tensor) -> torch.Tensor:
+        # BCEWithLogitsLoss is stable, but CSCA's multiplicative attention can
+        # occasionally create very large logits on tiny splits. Optional clipping
+        # keeps the BCE scale meaningful without changing the raw-logit API.
+        if self.logit_clip is None or self.logit_clip <= 0:
+            return x
+        return torch.clamp(x, min=-self.logit_clip, max=self.logit_clip)
+
     def forward(self, inputs: torch.Tensor):
         down1 = self.down_conv1(inputs)
         down2 = self.down_conv2(self.pool(down1))
@@ -227,26 +227,26 @@ class CSCAUNet(nn.Module):
         down5 = self.down_conv5(self.pool(down4))
         center = self.down_conv6(self.pool(down5))
 
-        out6 = self._resize_to_input(self.dp6(center), inputs)
+        out6 = self._stabilize_logits(self._resize_to_input(self.dp6(center), inputs))
 
         deco5 = self.up_conv5(center, down5)
-        out5 = self._resize_to_input(self.dp5(deco5), inputs)
+        out5 = self._stabilize_logits(self._resize_to_input(self.dp5(deco5), inputs))
         deco5 = deco5 + self._resize_like(self.center5(center), deco5)
 
         deco4 = self.up_conv4(deco5, down4)
-        out4 = self._resize_to_input(self.dp4(deco4), inputs)
+        out4 = self._stabilize_logits(self._resize_to_input(self.dp4(deco4), inputs))
         deco4 = deco4 + self._resize_like(self.decodeup4(deco5), deco4)
 
         deco3 = self.up_conv3(deco4, down3)
-        out3 = self._resize_to_input(self.dp3(deco3), inputs)
+        out3 = self._stabilize_logits(self._resize_to_input(self.dp3(deco3), inputs))
         deco3 = deco3 + self._resize_like(self.decodeup3(deco4), deco3)
 
         deco2 = self.up_conv2(deco3, down2)
-        out2 = self._resize_to_input(self.dp2(deco2), inputs)
+        out2 = self._stabilize_logits(self._resize_to_input(self.dp2(deco2), inputs))
         deco2 = deco2 + self._resize_like(self.decodeup2(deco3), deco2)
 
         deco1 = self.up_conv1(deco2, down1)
-        out = self.out(deco1)
+        out = self._stabilize_logits(self.out(deco1))
 
         if self.deep_supervision and self.faithful_output:
             return {"main": out, "aux": [out2, out3, out4, out5, out6]}

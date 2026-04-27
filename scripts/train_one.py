@@ -270,6 +270,9 @@ def main() -> None:
         aux_ramp_epochs=int(cfg["train"].get("aux_ramp_epochs", 0)),
         threshold=float(cfg["train"].get("threshold", 0.5)),
         logger=logger,
+        debug_logits=bool(cfg["train"].get("debug_logits", False)),
+        debug_logits_interval=int(cfg["train"].get("debug_logits_interval", 1)),
+        include_aux_loss_in_eval=bool(cfg.get("eval", {}).get("include_aux_loss", False)),
     )
 
     if args.resume:
@@ -282,6 +285,8 @@ def main() -> None:
         val_loader=val_loader,
         epochs=int(cfg["train"].get("epochs", 30)),
         metric_for_plateau=str(cfg["train"].get("plateau_metric", "loss")),
+        monitor=str(cfg["train"].get("save_metric", "dice")),
+        monitor_mode=str(cfg["train"].get("save_metric_mode", "max")),
     )
 
     if not history:
@@ -298,21 +303,41 @@ def main() -> None:
         fallback = record.get("val/loss", record.get("train/loss", math.nan))
         return float(fallback)
 
-    valid_records = [r for r in history if not math.isnan(metric_value(r))]
-    if best_metric_mode == "min":
-        best_record = min(valid_records or history, key=metric_value)
-    else:
-        best_record = max(valid_records or history, key=metric_value)
-    best_epoch = history.index(best_record) + 1
+    best_record = trainer.best_record
+    best_epoch = trainer.best_epoch
+    best_state_dict = trainer.best_state_dict
+    best_optimizer_state = trainer.best_optimizer_state
+
+    if best_record is None or best_epoch is None or best_state_dict is None:
+        valid_records = [r for r in history if not math.isnan(metric_value(r))]
+        if best_metric_mode == "min":
+            best_record = min(valid_records or history, key=metric_value)
+        else:
+            best_record = max(valid_records or history, key=metric_value)
+        best_epoch = history.index(best_record) + 1
+        best_state_dict = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        best_optimizer_state = optimizer.state_dict()
 
     ckpt_payload = {
         "epoch": best_epoch,
-        "state_dict": model.state_dict(),
+        "state_dict": best_state_dict,
+        "optimizer": best_optimizer_state if best_optimizer_state is not None else optimizer.state_dict(),
+        "config": cfg,
+        "history": history,
+        "best_metric": best_metric_name,
+        "best_metric_mode": best_metric_mode,
+        "best_metric_value": metric_value(best_record),
+    }
+    torch.save(ckpt_payload, exp_paths.checkpoints / "best.pt")
+
+    last_payload = {
+        "epoch": len(history),
+        "state_dict": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
         "optimizer": optimizer.state_dict(),
         "config": cfg,
         "history": history,
     }
-    torch.save(ckpt_payload, exp_paths.checkpoints / "best.pt")
+    torch.save(last_payload, exp_paths.checkpoints / "last.pt")
 
     summary = {
         "model": model_name,
