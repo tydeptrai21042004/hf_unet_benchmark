@@ -5,17 +5,20 @@ data:
   num_workers: 4
   pin_memory: true
   root: data
+
 eval:
   device: null
   loss: bce_dice
   threshold: 0.5
+
 experiment:
   output_root: outputs_paper_fair
   name: proposal_hf_unet
+
 train:
-  aux_loss_weight: 0.0
-  aux_ramp_epochs: 0
-  aux_warmup_epochs: 0
+  aux_loss_weight: 0.01
+  aux_ramp_epochs: 10
+  aux_warmup_epochs: 5
   epochs: 30
   eta_min: 1.0e-06
   grad_clip: 1.0
@@ -32,27 +35,53 @@ train:
   t_max: 30
   threshold: 0.5
   weight_decay: 0.0001
+
 model:
   name: proposal_hf_unet
   in_channels: 3
   num_classes: 1
+
   channels:
-  - 32
-  - 64
-  - 128
-  - 256
-  - 512
+    - 32
+    - 64
+    - 128
+    - 256
+    - 512
+
   hf_alpha: 0.5
-  hf_alpha_start: 0.5
-  hf_alpha_warmup_epochs: 0
+  hf_alpha_start: 0.0
+  hf_alpha_warmup_epochs: 10
+
   hf_expansion: 1.5
   hf_dropout: 0.1
-  use_hf_regularizer: false
+
+  # Enable because the paper reports the HF block as a stability-aware
+  # spectral bottleneck.
+  use_hf_regularizer: true
+
   norm: bn
   act: relu
+
   hf_block_norm: gn
   hf_block_act: gelu
+
+  # Keep this identity if you want the paper-faithful linear HF core.
   mixer_act: identity
+
+  # Paper-faithful options:
+  #   identity = closest to theory
+  #   linear   = practical 1x1 channel projection
+  #   conv     = old 3x3 empirical projection
+  hf_projection: linear
+
+  # For 352x352 input with 5 encoder stages, bottleneck is typically 22x22.
+  hf_mixer_init_hw:
+    - 22
+    - 22
+
+  # null means rank = max(int(channels * hf_expansion), channels).
+  hf_mixer_rank: null
+
   use_se: false
   use_gate: true
   gate_init_bias: -2.0
