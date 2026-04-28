@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional, Sequence
+
 import torch
 import torch.nn as nn
 
@@ -34,16 +36,29 @@ class HFUNet(nn.Module):
         gate_init_bias: float = -2.0,
         decoder_use_cbam: bool = False,
         identity_init: bool = True,
+        hf_projection: str = "linear",
+        hf_mixer_rank: Optional[int] = None,
+        hf_mixer_init_hw: Sequence[int] = (22, 22),
     ) -> None:
         super().__init__()
-        self.encoder = PyramidEncoder(in_channels=in_channels, channels=channels, block="double", norm=norm, act=act)
+
+        self.encoder = PyramidEncoder(
+            in_channels=in_channels,
+            channels=channels,
+            block="double",
+            norm=norm,
+            act=act,
+        )
+
         self.hf_alpha_target = float(hf_alpha)
         self.hf_alpha_start = float(hf_alpha_start)
         self.hf_alpha_warmup_epochs = int(hf_alpha_warmup_epochs)
+
         block_norm = hf_block_norm or norm
         block_act = hf_block_act or act
+
         self.hf_bottleneck = HFBottleneck(
-            channels[-1],
+            channels=channels[-1],
             expansion=hf_expansion,
             alpha=hf_alpha,
             dropout=hf_dropout,
@@ -54,11 +69,31 @@ class HFUNet(nn.Module):
             mixer_act=mixer_act,
             gate_init_bias=gate_init_bias,
             identity_init=identity_init,
+            projection=hf_projection,
+            mixer_rank=hf_mixer_rank,
+            mixer_init_hw=hf_mixer_init_hw,
         )
-        self.decoder = UNetDecoder(channels=channels, norm=norm, act=act, use_cbam=decoder_use_cbam)
-        self.seg_head = nn.Conv2d(channels[0], num_classes, 1)
+
+        self.decoder = UNetDecoder(
+            channels=channels,
+            norm=norm,
+            act=act,
+            use_cbam=decoder_use_cbam,
+        )
+
+        self.seg_head = nn.Conv2d(channels[0], num_classes, kernel_size=1)
+
         self.regularizer = HFRegularizer() if use_hf_regularizer else None
+
+        # Global initialization.
         init_weights(self)
+
+        # Important:
+        # init_weights(self) reinitializes Conv2d modules inside the HF block.
+        # Therefore, re-apply the identity-friendly initialization afterwards.
+        if identity_init:
+            self.hf_bottleneck._apply_identity_friendly_init(gate_init_bias=gate_init_bias)
+
         self.set_epoch(0)
 
     def set_epoch(self, epoch: int) -> None:
@@ -67,11 +102,15 @@ class HFUNet(nn.Module):
         else:
             progress = min(max(float(epoch), 0.0) / float(self.hf_alpha_warmup_epochs), 1.0)
             alpha = self.hf_alpha_start + (self.hf_alpha_target - self.hf_alpha_start) * progress
+
         self.hf_bottleneck.set_alpha(alpha)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         feats = self.encoder(x)
+
+        # Correct placement: deepest encoder bottleneck.
         feats[-1] = self.hf_bottleneck(feats[-1])
+
         dec = self.decoder(feats)
         return self.seg_head(dec)
 
@@ -79,6 +118,7 @@ class HFUNet(nn.Module):
         if self.regularizer is None:
             device = next(self.parameters()).device
             return torch.zeros((), device=device)
+
         return self.regularizer.from_module(self.hf_bottleneck)
 
 
