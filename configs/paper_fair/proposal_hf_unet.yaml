@@ -16,9 +16,9 @@ experiment:
   name: proposal_hf_unet
 
 train:
-  aux_loss_weight: 0.01
-  aux_ramp_epochs: 10
-  aux_warmup_epochs: 5
+  aux_loss_weight: 0.0
+  aux_ramp_epochs: 0
+  aux_warmup_epochs: 0
   epochs: 30
   eta_min: 1.0e-06
   grad_clip: 1.0
